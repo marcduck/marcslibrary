@@ -1,0 +1,12 @@
+{
+  "name": "marcslibrary",
+  "version": "1.0.0",
+  "description": "A barebones library app: scan a barcode, see the book, change its status.",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22.5.0" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  }
+}

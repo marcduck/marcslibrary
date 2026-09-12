@@ -1,5 +1,5 @@
-import * as store from './store.js';
-import { STATUSES, statusLabel } from './store.js';
+import * as api from './api.js';
+import { STATUSES, statusLabel } from './api.js';
 import { barcodeSVG } from './barcode.js';
 import { Scanner, cameraSupported, secureContextOK } from './scanner.js';
 
@@ -11,6 +11,8 @@ const toastEl = document.getElementById('toast');
 
 let activeScanner = null;
 let listState = { query: '', filter: 'all' };
+let libraryName = "MARC'S LIBRARY";
+let searchDebounce = null;
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -24,7 +26,7 @@ function toast(message) {
   toastEl.textContent = message;
   toastEl.hidden = false;
   clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => { toastEl.hidden = true; }, 2600);
+  toast._timer = setTimeout(() => { toastEl.hidden = true; }, 2800);
 }
 
 function go(hash) {
@@ -45,6 +47,14 @@ function setChrome({ title, back = false, action = null }) {
   }
 }
 
+function loading(message = 'Loading…') {
+  view.innerHTML = `<p class="empty">${esc(message)}</p>`;
+}
+
+function showError(err) {
+  view.innerHTML = `<p class="empty error">${esc(err.message)}</p>`;
+}
+
 function formatDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -62,22 +72,32 @@ function dueInfo(book) {
   return { overdue: false, text: `Due in ${days} day${days === 1 ? '' : 's'}` };
 }
 
+// Covers come from an external service, so every one needs a graceful fallback.
+function coverHTML(book, className = 'cover') {
+  const initials = (book.title || '?').trim().slice(0, 1).toUpperCase();
+  if (!book.coverUrl) return `<div class="${className} cover-blank">${esc(initials)}</div>`;
+  return `<img class="${className}" src="${esc(book.coverUrl)}" alt="" loading="lazy"
+    onerror="this.outerHTML='<div class=&quot;${className} cover-blank&quot;>${esc(initials)}</div>'" />`;
+}
+
 /* ------------------------------------------------------------------ views */
 
-function renderLibrary() {
-  setChrome({
-    title: store.libraryName(),
-    action: { label: '+', aria: 'Add a book', onClick: () => go('#/add') },
-  });
+async function renderLibrary() {
+  setChrome({ title: libraryName, action: { label: '+', aria: 'Add a book', onClick: () => go('#/add') } });
+  loading();
 
-  const counts = store.counts();
-  const books = store.search(listState.query, listState.filter);
+  let data;
+  try {
+    data = await api.listBooks(listState.query, listState.filter);
+  } catch (err) {
+    return showError(err);
+  }
 
+  const { books, counts } = data;
   const filters = [{ id: 'all', label: 'All' }, ...STATUSES]
     .map((f) => `<button type="button" class="chip ${listState.filter === f.id ? 'is-active' : ''}" data-filter="${f.id}">
         ${esc(f.label)} <span class="chip-count">${counts[f.id] || 0}</span>
-      </button>`)
-    .join('');
+      </button>`).join('');
 
   const rows = books.length
     ? books.map(bookRow).join('')
@@ -96,10 +116,16 @@ function renderLibrary() {
   const q = view.querySelector('#q');
   q.addEventListener('input', () => {
     listState.query = q.value;
-    const scroll = view.scrollTop;
-    renderLibrary();
-    view.scrollTop = scroll;
-    view.querySelector('#q').focus();
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(async () => {
+      if (location.hash.replace('#', '') !== '/' && location.hash !== '') return;
+      await renderLibrary();
+      const field = view.querySelector('#q');
+      if (field) {
+        field.focus();
+        field.setSelectionRange(field.value.length, field.value.length);
+      }
+    }, 220);
   });
 
   view.querySelectorAll('[data-filter]').forEach((btn) => {
@@ -124,6 +150,7 @@ function bookRow(book) {
   ].filter(Boolean).join(' · ');
 
   return `<li class="book-row" data-book="${esc(book.id)}">
+    ${coverHTML(book, 'cover cover-sm')}
     <div class="book-main">
       <span class="book-title">${esc(book.title)}</span>
       ${meta ? `<span class="book-meta">${meta}</span>` : ''}
@@ -133,16 +160,23 @@ function bookRow(book) {
   </li>`;
 }
 
-function renderBook(id) {
-  const book = store.getBook(id);
-  if (!book) {
-    setChrome({ title: 'Not found', back: true });
-    view.innerHTML = `<p class="empty">That book is no longer in the library.</p>`;
-    return;
+async function renderBook(id) {
+  setChrome({ title: 'Book', back: true });
+  loading();
+
+  let book;
+  try {
+    book = await api.getBook(id);
+  } catch (err) {
+    return showError(err);
   }
 
-  setChrome({ title: 'Book', back: true });
   const due = dueInfo(book);
+  const facts = [
+    book.published ? `First published ${esc(book.published)}` : '',
+    book.pages ? `${esc(book.pages)} pages` : '',
+    book.isbn ? `ISBN ${esc(book.isbn)}` : '',
+  ].filter(Boolean).join(' · ');
 
   const statusButtons = STATUSES.map((s) => `
     <button type="button" class="status-btn ${book.status === s.id ? 'is-active' : ''}" data-status="${s.id}">
@@ -156,14 +190,20 @@ function renderBook(id) {
 
   view.innerHTML = `
     <section class="card book-header">
-      <h2>${esc(book.title)}</h2>
-      ${book.author ? `<p class="author">${esc(book.author)}</p>` : ''}
-      <p class="status-line">
-        <span class="status status-${esc(book.status)}">${esc(statusLabel(book.status))}</span>
-        ${book.borrower ? `<span class="borrower">${esc(book.borrower)}</span>` : ''}
-        ${due ? `<span class="${due.overdue ? 'overdue' : ''}">${esc(due.text)}</span>` : ''}
-      </p>
-      <p class="code-line">Barcode ${esc(book.code)}</p>
+      <div class="book-hero">
+        ${coverHTML(book, 'cover cover-lg')}
+        <div class="book-hero-text">
+          <h2>${esc(book.title)}</h2>
+          ${book.author ? `<p class="author">${esc(book.author)}</p>` : ''}
+          <p class="status-line">
+            <span class="status status-${esc(book.status)}">${esc(statusLabel(book.status))}</span>
+            ${book.borrower ? `<span class="borrower">${esc(book.borrower)}</span>` : ''}
+            ${due ? `<span class="${due.overdue ? 'overdue' : ''}">${esc(due.text)}</span>` : ''}
+          </p>
+          ${facts ? `<p class="facts">${facts}</p>` : ''}
+          <p class="code-line">Barcode ${esc(book.code)}</p>
+        </div>
+      </div>
     </section>
 
     <section class="card">
@@ -172,8 +212,8 @@ function renderBook(id) {
       <div id="status-extra"></div>
     </section>
 
+    ${book.summary ? `<section class="card"><h3>About</h3><p class="notes">${esc(book.summary)}</p></section>` : ''}
     ${book.notes ? `<section class="card"><h3>Notes</h3><p class="notes">${esc(book.notes)}</p></section>` : ''}
-
     ${history ? `<section class="card"><h3>History</h3><ul class="history">${history}</ul></section>` : ''}
 
     <section class="card actions">
@@ -184,25 +224,29 @@ function renderBook(id) {
   `;
 
   view.querySelectorAll('[data-status]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const status = btn.dataset.status;
-      if (status === 'loaned' || status === 'hold') {
-        showBorrowerForm(book, status);
-      } else {
-        store.setStatus(book.id, status);
+      if (status === 'loaned' || status === 'hold') return showBorrowerForm(book, status);
+      try {
+        await api.setStatus(book.id, status);
         toast(`Marked ${statusLabel(status).toLowerCase()}`);
         renderBook(book.id);
+      } catch (err) {
+        toast(err.message);
       }
     });
   });
 
   view.querySelector('#label-btn').addEventListener('click', () => go(`#/label/${book.id}`));
   view.querySelector('#edit-btn').addEventListener('click', () => go(`#/edit/${book.id}`));
-  view.querySelector('#delete-btn').addEventListener('click', () => {
-    if (confirm(`Remove "${book.title}" from the library?`)) {
-      store.deleteBook(book.id);
+  view.querySelector('#delete-btn').addEventListener('click', async () => {
+    if (!confirm(`Remove "${book.title}" from the library?`)) return;
+    try {
+      await api.deleteBook(book.id);
       toast('Book removed');
       go('#/');
+    } catch (err) {
+      toast(err.message);
     }
   });
 }
@@ -223,17 +267,20 @@ function showBorrowerForm(book, status) {
         <button type="submit" class="btn btn-primary">Save</button>
         <button type="button" class="btn" id="cancel-borrower">Cancel</button>
       </div>
-    </form>
-  `;
+    </form>`;
   wrap.querySelector('#borrower').focus();
   wrap.querySelector('#cancel-borrower').addEventListener('click', () => { wrap.innerHTML = ''; });
-  wrap.querySelector('#borrower-form').addEventListener('submit', (e) => {
+  wrap.querySelector('#borrower-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const borrower = wrap.querySelector('#borrower').value.trim();
     const dueDate = wrap.querySelector('#due') ? wrap.querySelector('#due').value : '';
-    store.setStatus(book.id, status, { borrower, dueDate });
-    toast(status === 'loaned' ? `Loaned to ${borrower}` : `On hold for ${borrower}`);
-    renderBook(book.id);
+    try {
+      await api.setStatus(book.id, status, { borrower, dueDate });
+      toast(status === 'loaned' ? `Loaned to ${borrower}` : `On hold for ${borrower}`);
+      renderBook(book.id);
+    } catch (err) {
+      toast(err.message);
+    }
   });
 }
 
@@ -242,7 +289,7 @@ function renderScan() {
 
   if (!cameraSupported() || !secureContextOK()) {
     view.innerHTML = `
-      <p class="empty">The camera needs an <strong>https</strong> connection (GitHub Pages works; so does localhost).
+      <p class="empty">The camera needs an <strong>https</strong> connection (or localhost).
       You can still type a barcode below.</p>
       ${manualEntryHTML()}`;
     wireManualEntry();
@@ -254,7 +301,7 @@ function renderScan() {
       <video id="cam" playsinline muted></video>
       <div class="scan-frame"></div>
     </div>
-    <p class="hint" id="scan-hint">Point the camera at the barcode on the label.</p>
+    <p class="hint" id="scan-hint">Point the camera at a shelf label, or at the ISBN barcode on the back of a new book.</p>
     ${manualEntryHTML()}
   `;
   wireManualEntry();
@@ -306,16 +353,17 @@ function wireManualEntry() {
   });
 }
 
-// A scan either opens the matching book, or offers to create it.
-function handleScanned(code) {
-  const book = store.findByCode(code);
-  if (book) {
+// A scan either opens the matching book, or starts adding it.
+async function handleScanned(code) {
+  try {
+    const book = await api.getBookByCode(code);
     if (navigator.vibrate) navigator.vibrate(40);
-    go(`#/book/${book.id}`);
-  } else {
-    go(`#/add?code=${encodeURIComponent(store.formatCode(code))}`);
-    toast('No book with that barcode yet — add it below.');
+    return go(`#/book/${book.id}`);
+  } catch (err) {
+    if (err.status !== 404) return toast(err.message);
   }
+  go(`#/add?code=${encodeURIComponent(code)}`);
+  toast('No book with that barcode yet — add it below.');
 }
 
 function stopScanner() {
@@ -325,94 +373,254 @@ function stopScanner() {
   }
 }
 
-function renderAdd(params) {
+/* --------------------------------------------------------------- add/edit */
+
+// Metadata chosen from the lookup results, merged into the book on save.
+let draft = {};
+
+async function renderAdd(params) {
   setChrome({ title: 'Add a book', back: true });
-  const code = params.get('code') || store.nextCode();
+  const scanned = params.get('code') || '';
+  // An ISBN barcode off the back of a book identifies the book itself; a shelf
+  // label is just our own number, so only the former is worth looking up.
+  const scannedISBN = isISBN(scanned) ? cleanISBN(scanned) : '';
+
+  let meta;
+  try {
+    meta = await api.getMeta();
+  } catch (err) {
+    return showError(err);
+  }
+  draft = scannedISBN ? { isbn: scannedISBN } : {};
 
   view.innerHTML = `
+    <section class="card">
+      <h3>Find the book</h3>
+      <form class="inline-form" id="lookup-form">
+        <div class="lookup-row">
+          <input type="text" id="lookup-q" placeholder="Title, author or ISBN" value="${esc(scannedISBN)}" />
+          <button type="submit" class="btn btn-primary">Search</button>
+        </div>
+        <p class="hint">Fills in the cover, author, year and page count automatically. Or just type the details in below.</p>
+      </form>
+      <div id="lookup-results"></div>
+    </section>
+
     <form class="card form" id="add-form">
+      <div id="picked"></div>
       <label>Title <input type="text" id="title" required placeholder="Le Mort Darthur" /></label>
       <label>Author <input type="text" id="author" placeholder="Thomas Malory" /></label>
-      <label>Barcode <input type="text" id="code" value="${esc(code)}" required /></label>
+      <label>Shelf barcode <input type="text" id="code" value="${esc(scannedISBN ? meta.nextCode : (scanned || meta.nextCode))}" required /></label>
       <label>Status
-        <select id="status">
-          ${STATUSES.map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('')}
-        </select>
+        <select id="status">${STATUSES.map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('')}</select>
       </label>
       <label>Notes <textarea id="notes" rows="3" placeholder="Shelf, edition, condition..."></textarea></label>
       <button type="submit" class="btn btn-primary">Add to library</button>
     </form>`;
 
-  view.querySelector('#title').focus();
-  view.querySelector('#add-form').addEventListener('submit', (e) => {
+  wireLookup((picked) => {
+    draft = { ...draft, ...picked };
+    view.querySelector('#title').value = picked.title || '';
+    view.querySelector('#author').value = picked.author || '';
+    renderPicked(draft);
+  });
+
+  view.querySelector('#add-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const codeValue = view.querySelector('#code').value.trim();
-    const clash = store.findByCode(codeValue);
-    if (clash) {
-      toast(`Barcode ${clash.code} is already "${clash.title}"`);
-      return;
-    }
-    const book = store.addBook({
-      code: codeValue,
+    const payload = {
+      ...draft,
       title: view.querySelector('#title').value,
       author: view.querySelector('#author').value,
+      code: view.querySelector('#code').value.trim(),
       status: view.querySelector('#status').value,
       notes: view.querySelector('#notes').value,
-    });
-    toast('Book added');
-    go(`#/book/${book.id}`);
+    };
+    try {
+      const book = await api.createBook(payload);
+      toast('Book added');
+      go(`#/book/${book.id}`);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  if (scannedISBN) {
+    runLookup(scannedISBN);
+  } else {
+    view.querySelector('#lookup-q').focus();
+  }
+}
+
+function renderPicked(picked) {
+  const wrap = view.querySelector('#picked');
+  if (!wrap) return;
+  if (!picked.title && !picked.coverUrl) {
+    wrap.innerHTML = '';
+    return;
+  }
+  const facts = [
+    picked.published ? esc(picked.published) : '',
+    picked.pages ? `${esc(picked.pages)} pages` : '',
+    picked.isbn ? `ISBN ${esc(picked.isbn)}` : '',
+  ].filter(Boolean).join(' · ');
+  wrap.innerHTML = `
+    <div class="picked">
+      ${coverHTML(picked, 'cover cover-md')}
+      <div>
+        <p class="picked-label">Using details from the catalogue</p>
+        ${facts ? `<p class="facts">${facts}</p>` : ''}
+        <button type="button" class="link-btn" id="clear-picked">Clear</button>
+      </div>
+    </div>`;
+  wrap.querySelector('#clear-picked').addEventListener('click', () => {
+    draft = {};
+    renderPicked(draft);
   });
 }
 
-function renderEdit(id) {
-  const book = store.getBook(id);
-  if (!book) return go('#/');
+function wireLookup(onPick) {
+  const form = view.querySelector('#lookup-form');
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    runLookup(view.querySelector('#lookup-q').value.trim(), onPick);
+  });
+  wireLookup._onPick = onPick;
+}
+
+async function runLookup(query, onPick = wireLookup._onPick) {
+  const box = view.querySelector('#lookup-results');
+  if (!query || !box) return;
+  box.innerHTML = `<p class="hint">Searching…</p>`;
+
+  let data;
+  try {
+    data = await api.lookupBooks(isISBN(query) ? { isbn: cleanISBN(query) } : { q: query });
+  } catch (err) {
+    box.innerHTML = `<p class="hint error">${esc(err.message)} You can still type the details in by hand.</p>`;
+    return;
+  }
+
+  if (!data.results.length) {
+    box.innerHTML = `<p class="hint">Nothing found. Type the details in by hand instead.</p>`;
+    return;
+  }
+
+  box.innerHTML = `<ul class="results">${data.results.map((r, i) => `
+    <li class="result" data-index="${i}">
+      ${coverHTML(r, 'cover cover-sm')}
+      <div class="book-main">
+        <span class="book-title">${esc(r.title)}</span>
+        <span class="book-meta">${[r.author, r.published].filter(Boolean).map(esc).join(' · ')}</span>
+      </div>
+    </li>`).join('')}</ul>
+    <p class="hint">Source: ${data.source === 'googlebooks' ? 'Google Books' : 'Open Library'}</p>`;
+
+  box.querySelectorAll('.result').forEach((li) => {
+    li.addEventListener('click', () => {
+      onPick(data.results[Number(li.dataset.index)]);
+      box.innerHTML = '';
+      view.querySelector('#lookup-q').value = '';
+    });
+  });
+}
+
+function cleanISBN(value) {
+  return String(value || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+}
+
+function isISBN(value) {
+  const isbn = cleanISBN(value);
+  if (isbn.length === 13) return /^97[89]/.test(isbn);
+  return isbn.length === 10;
+}
+
+async function renderEdit(id) {
   setChrome({ title: 'Edit book', back: true });
+  loading();
+
+  let book;
+  try {
+    book = await api.getBook(id);
+  } catch (err) {
+    return showError(err);
+  }
+  draft = {};
 
   view.innerHTML = `
+    <section class="card">
+      <h3>Look up details</h3>
+      <form class="inline-form" id="lookup-form">
+        <div class="lookup-row">
+          <input type="text" id="lookup-q" placeholder="Title, author or ISBN"
+                 value="${esc(book.isbn || `${book.title} ${book.author}`.trim())}" />
+          <button type="submit" class="btn">Search</button>
+        </div>
+        <p class="hint">Use this to add or replace the cover and book details.</p>
+      </form>
+      <div id="lookup-results"></div>
+    </section>
+
     <form class="card form" id="edit-form">
+      <div id="picked"></div>
       <label>Title <input type="text" id="title" value="${esc(book.title)}" required /></label>
       <label>Author <input type="text" id="author" value="${esc(book.author)}" /></label>
-      <label>Barcode <input type="text" id="code" value="${esc(book.code)}" required /></label>
+      <label>Shelf barcode <input type="text" id="code" value="${esc(book.code)}" required /></label>
+      <label>ISBN <input type="text" id="isbn" value="${esc(book.isbn)}" /></label>
+      <label>Cover image URL <input type="text" id="coverUrl" value="${esc(book.coverUrl)}" /></label>
       <label>Notes <textarea id="notes" rows="3">${esc(book.notes)}</textarea></label>
       <button type="submit" class="btn btn-primary">Save changes</button>
     </form>`;
 
-  view.querySelector('#edit-form').addEventListener('submit', (e) => {
+  wireLookup((picked) => {
+    draft = { ...draft, ...picked };
+    view.querySelector('#title').value = picked.title || view.querySelector('#title').value;
+    view.querySelector('#author').value = picked.author || view.querySelector('#author').value;
+    if (picked.isbn) view.querySelector('#isbn').value = picked.isbn;
+    if (picked.coverUrl) view.querySelector('#coverUrl').value = picked.coverUrl;
+    renderPicked(draft);
+  });
+
+  view.querySelector('#edit-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const codeValue = view.querySelector('#code').value.trim();
-    const clash = store.findByCode(codeValue);
-    if (clash && clash.id !== book.id) {
-      toast(`Barcode ${clash.code} is already "${clash.title}"`);
-      return;
+    try {
+      await api.updateBook(book.id, {
+        ...draft,
+        title: view.querySelector('#title').value.trim() || 'Untitled',
+        author: view.querySelector('#author').value.trim(),
+        code: view.querySelector('#code').value.trim(),
+        isbn: view.querySelector('#isbn').value.trim(),
+        coverUrl: view.querySelector('#coverUrl').value.trim(),
+        notes: view.querySelector('#notes').value.trim(),
+      });
+      toast('Saved');
+      go(`#/book/${book.id}`);
+    } catch (err) {
+      toast(err.message);
     }
-    store.updateBook(book.id, {
-      title: view.querySelector('#title').value.trim() || 'Untitled',
-      author: view.querySelector('#author').value.trim(),
-      code: codeValue,
-      notes: view.querySelector('#notes').value.trim(),
-    });
-    toast('Saved');
-    go(`#/book/${book.id}`);
   });
 }
 
-function renderLabel(id) {
-  const book = store.getBook(id);
-  if (!book) return go('#/');
+async function renderLabel(id) {
   setChrome({ title: 'Label', back: true });
+  loading();
+
+  let book;
+  try {
+    book = await api.getBook(id);
+  } catch (err) {
+    return showError(err);
+  }
 
   let svg;
   try {
     svg = barcodeSVG(book.code, { height: 60, module: 2 });
   } catch (err) {
-    view.innerHTML = `<p class="empty">${esc(err.message)}</p>`;
-    return;
+    return showError(err);
   }
 
   view.innerHTML = `
     <div class="label-sheet" id="label">
-      <div class="label-library">${esc(store.libraryName())}</div>
+      <div class="label-library">${esc(libraryName)}</div>
       <div class="label-title">${esc(book.title)}</div>
       <div class="label-barcode">${svg}</div>
       <div class="label-code">${esc(book.code)}</div>
@@ -425,50 +633,75 @@ function renderLabel(id) {
   view.querySelector('#print').addEventListener('click', () => window.print());
 }
 
-function renderSettings() {
+async function renderSettings() {
   setChrome({ title: 'Settings', back: true });
-  const counts = store.counts();
+  loading();
+
+  let meta;
+  try {
+    meta = await api.getMeta();
+  } catch (err) {
+    return showError(err);
+  }
 
   view.innerHTML = `
     <form class="card form" id="name-form">
       <label>Library name (printed on labels)
-        <input type="text" id="lib-name" value="${esc(store.libraryName())}" />
+        <input type="text" id="lib-name" value="${esc(meta.name)}" />
       </label>
       <button type="submit" class="btn btn-primary">Save name</button>
     </form>
 
     <section class="card">
       <h3>Your library</h3>
-      <p class="hint">${counts.all} book${counts.all === 1 ? '' : 's'}, stored on this device only.
-      Export regularly — clearing your browser data erases it.</p>
+      <p class="hint">${meta.counts.all} book${meta.counts.all === 1 ? '' : 's'}, stored in the database on the server.
+      Next shelf barcode: ${esc(meta.nextCode)}.</p>
       <div class="actions">
         <button type="button" class="btn" id="export">Export backup (JSON)</button>
         <label class="btn file-btn">Import backup<input type="file" id="import" accept="application/json,.json" hidden /></label>
-        <button type="button" class="btn btn-danger" id="wipe">Erase everything</button>
+      </div>
+    </section>
+
+    <section class="card" id="migrate-card" hidden>
+      <h3>Books saved on this device</h3>
+      <p class="hint">This browser still has books from before the library moved to the server.
+      Upload them to keep everything in one place.</p>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="migrate">Upload <span id="migrate-count"></span> to the server</button>
       </div>
     </section>`;
 
-  view.querySelector('#name-form').addEventListener('submit', (e) => {
+  view.querySelector('#name-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    store.setLibraryName(view.querySelector('#lib-name').value);
-    toast('Library name saved');
+    try {
+      const saved = await api.setLibraryName(view.querySelector('#lib-name').value);
+      libraryName = saved.name;
+      toast('Library name saved');
+    } catch (err) {
+      toast(err.message);
+    }
   });
 
-  view.querySelector('#export').addEventListener('click', () => {
-    const blob = new Blob([store.exportJSON()], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `library-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  view.querySelector('#export').addEventListener('click', async () => {
+    try {
+      const data = await api.exportAll();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `library-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast(err.message);
+    }
   });
 
   view.querySelector('#import').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
-      const result = store.importJSON(await file.text());
+      const result = await api.importBooks(JSON.parse(await file.text()));
       toast(`Imported: ${result.added} new, ${result.updated} updated`);
       renderSettings();
     } catch (err) {
@@ -476,18 +709,37 @@ function renderSettings() {
     }
   });
 
-  view.querySelector('#wipe').addEventListener('click', () => {
-    if (confirm('Erase every book on this device? Export a backup first if you want to keep them.')) {
-      store.importJSON('{"books":[]}', { replace: true });
-      toast('Library erased');
+  offerMigration();
+}
+
+// The first version of this app kept books in localStorage; offer to move them.
+function offerMigration() {
+  let saved;
+  try {
+    saved = JSON.parse(localStorage.getItem('marcslibrary.books.v1') || '[]');
+  } catch (err) {
+    return;
+  }
+  if (!Array.isArray(saved) || !saved.length) return;
+
+  const card = view.querySelector('#migrate-card');
+  card.hidden = false;
+  card.querySelector('#migrate-count').textContent = `${saved.length} book${saved.length === 1 ? '' : 's'}`;
+  card.querySelector('#migrate').addEventListener('click', async () => {
+    try {
+      const result = await api.importBooks({ books: saved });
+      localStorage.removeItem('marcslibrary.books.v1');
+      toast(`Uploaded: ${result.added} new, ${result.updated} updated`);
       renderSettings();
+    } catch (err) {
+      toast(`Upload failed: ${err.message}`);
     }
   });
 }
 
 /* ---------------------------------------------------------------- routing */
 
-function router() {
+async function router() {
   stopScanner();
   const raw = location.hash.replace(/^#/, '') || '/';
   const [path, queryString] = raw.split('?');
@@ -522,4 +774,8 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) stopScanner();
 });
 
-router();
+// Load the library name first so the title bar is right on the very first paint.
+api.getMeta()
+  .then((meta) => { libraryName = meta.name; })
+  .catch(() => {})
+  .finally(router);
