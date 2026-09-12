@@ -2,9 +2,11 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { STATUSES } from '@/lib/statuses';
+import { Input, SegmentGroup } from '@/components/ui';
 import type { Counts } from '@/lib/books';
+
+const FILTERS = [{ id: 'all', label: 'All' }, ...STATUSES];
 
 export default function LibrarySearch({ counts }: { counts: Counts }) {
   const router = useRouter();
@@ -30,36 +32,39 @@ export default function LibrarySearch({ counts }: { counts: Counts }) {
     return () => clearTimeout(timer);
   }, [query, status, router]);
 
-  const filterHref = (id: string) => {
+  const setStatusFilter = (id: string) => {
     const next = new URLSearchParams();
     if (query.trim()) next.set('q', query.trim());
     if (id !== 'all') next.set('status', id);
     const qs = next.toString();
-    return qs ? `/?${qs}` : '/';
+    router.replace(qs ? `/?${qs}` : '/', { scroll: false });
   };
 
   return (
     <>
       <div className="search-row">
-        <input
+        <Input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search title, author, borrower or barcode"
+          placeholder="Search title, author, ISBN or barcode"
           aria-label="Search the library"
         />
       </div>
       <div className="chips">
-        {[{ id: 'all', label: 'All' }, ...STATUSES].map((filter) => (
-          <Link
-            key={filter.id}
-            href={filterHref(filter.id)}
-            scroll={false}
-            className={`chip ${status === filter.id ? 'is-active' : ''}`}
-          >
-            {filter.label} <span className="chip-count">{counts[filter.id] || 0}</span>
-          </Link>
-        ))}
+        <SegmentGroup.Root
+          size="xs"
+          value={status}
+          onValueChange={(details) => setStatusFilter(details.value ?? 'all')}
+        >
+          <SegmentGroup.Indicator />
+          <SegmentGroup.Items
+            items={FILTERS.map((filter) => ({
+              value: filter.id,
+              label: `${filter.label} (${counts[filter.id] || 0})`,
+            }))}
+          />
+        </SegmentGroup.Root>
       </div>
     </>
   );

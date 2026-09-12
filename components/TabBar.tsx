@@ -7,7 +7,6 @@ const TABS = [
   { href: '/', label: 'Library' },
   { href: '/scan', label: 'Scan' },
   { href: '/add', label: 'Add' },
-  { href: '/settings', label: 'Settings' },
 ];
 
 export default function TabBar() {

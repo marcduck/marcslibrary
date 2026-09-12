@@ -15,15 +15,22 @@ before(async () => {
 });
 
 after(async () => {
+  const { closeDb } = await import('../lib/db.ts');
+  closeDb();
   if (tmp) await rm(tmp, { recursive: true, force: true });
+});
+
+test('suggests shelf barcode 0000167 when the library is empty', () => {
+  assert.equal(books.nextCode(), '0000167');
 });
 
 test('adds a book and logs it in the history', () => {
   const book = books.createBook({ title: 'Le Mort Darthur', author: 'Thomas Malory', code: '0000167' });
   assert.equal(book.code, '0000167');
   assert.equal(book.status, 'available');
-  assert.equal(book.history[0].note, 'Added to library');
+  assert.equal(book.history[0].status, 'available');
   assert.equal(books.getBook(book.id).title, 'Le Mort Darthur');
+  assert.equal(books.nextCode(), '0000168', 'the suggestion increments past the highest existing code');
 });
 
 test('pads and matches barcodes loosely', () => {
@@ -39,16 +46,15 @@ test('refuses a barcode that is already taken', () => {
   assert.throws(() => books.createBook({ title: 'Second', code: '400' }), /already "First"/);
 });
 
-test('a loan records the borrower and clears it on return', () => {
+test('changes status and logs each change in the history', () => {
   const book = books.createBook({ title: 'Loanable', code: '0000500' });
-  const loaned = books.setStatus(book.id, 'loaned', { borrower: 'Sam', dueDate: '2026-10-01' });
-  assert.equal(loaned.borrower, 'Sam');
-  assert.equal(loaned.dueDate, '2026-10-01');
+  const loaned = books.setStatus(book.id, 'loaned');
+  assert.equal(loaned.status, 'loaned');
 
   const back = books.setStatus(book.id, 'available');
-  assert.equal(back.borrower, '', 'the borrower goes away when the book comes back');
-  assert.equal(back.dueDate, '');
+  assert.equal(back.status, 'available');
   assert.deepEqual(back.history.map((h) => h.status), ['available', 'loaned', 'available']);
+  assert.ok(back.history[0].at, 'each history entry records when it happened');
 });
 
 test('rejects an unknown status', () => {
@@ -56,10 +62,12 @@ test('rejects an unknown status', () => {
   assert.throws(() => books.setStatus(book.id, 'eaten-by-dog'), /Unknown status/);
 });
 
-test('searches titles, authors and barcodes without matching everything', () => {
+test('searches titles, authors, barcodes and ISBNs without matching everything', () => {
+  books.createBook({ title: 'Dune', author: 'Frank Herbert', code: '0000600', isbn: '9780441013593' });
   assert.equal(books.listBooks({ q: 'padded' }).length, 1);
   assert.equal(books.listBooks({ q: '300' })[0].title, 'Padded');
-  assert.equal(books.listBooks({ q: 'malory' })[0].author, 'Thomas Malory');
+  assert.equal(books.listBooks({ q: 'herbert' })[0].author, 'Frank Herbert');
+  assert.equal(books.listBooks({ q: '9780441013593' })[0].title, 'Dune');
   assert.equal(books.listBooks({ q: 'zzzznope' }).length, 0, 'a miss returns nothing');
   assert.ok(books.listBooks({ q: 'a' }).length < books.listBooks().length + 1);
 });
@@ -69,37 +77,11 @@ test('filters by status', () => {
   assert.ok(loaned.every((b) => b.status === 'loaned'));
 });
 
-test('suggests the next shelf barcode, zero padded', () => {
-  const next = books.nextCode();
-  assert.equal(next.length, 7);
-  books.createBook({ title: 'Sequence', code: next });
-  assert.equal(Number(books.nextCode()), Number(next) + 1);
-});
-
-test('exports and re-imports without duplicating books', () => {
-  const exported = books.exportAll();
-  const before = exported.books.length;
-  const again = books.importBooks(exported.books);
-  assert.equal(again.added, 0);
-  assert.equal(again.updated, before);
-  assert.equal(books.counts().all, before, 'book count unchanged');
-
-  const fresh = books.importBooks([{ title: 'Imported', code: '0000900', status: 'reading' }]);
-  assert.equal(fresh.added, 1);
-  assert.equal(books.getBookByCode('0000900').status, 'reading');
-});
-
 test('deletes a book and its history', () => {
   const book = books.createBook({ title: 'Doomed', code: '0000999' });
   assert.equal(books.deleteBook(book.id), true);
   assert.equal(books.getBook(book.id), null);
   assert.equal(books.deleteBook(book.id), false);
-});
-
-test('remembers the library name', () => {
-  assert.equal(books.libraryName(), "MARC'S LIBRARY");
-  books.setSetting('libraryName', "Marc's Shelf");
-  assert.equal(books.libraryName(), "Marc's Shelf");
 });
 
 test('returns plain objects, which React can pass to client components', () => {

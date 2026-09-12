@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import TopBar from '@/components/TopBar';
 import BookRow from '@/components/BookRow';
 import LibrarySearch from '@/components/LibrarySearch';
-import { listBooks, counts, libraryName } from '@/lib/books';
+import { listBooks, counts } from '@/lib/books';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ export default async function LibraryPage({ searchParams }: Props) {
 
   return (
     <>
-      <TopBar title={libraryName()} action={{ href: '/add', label: '+', aria: 'Add a book' }} />
+      <TopBar title="Marc's Library" />
       <main className="view">
         <Suspense fallback={<div className="search-row" />}>
           <LibrarySearch counts={totals} />

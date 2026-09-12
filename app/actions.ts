@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import * as books from '@/lib/books';
-import { DEFAULT_LIBRARY_NAME } from '@/lib/books';
 
 export type FormState = { error?: string };
 
@@ -13,7 +12,6 @@ function message(err: unknown): string {
 
 function refresh(id?: string) {
   revalidatePath('/');
-  revalidatePath('/settings');
   if (id) revalidatePath(`/books/${id}`);
 }
 
@@ -24,13 +22,8 @@ export async function createBookAction(_state: FormState, formData: FormData): P
       title: String(formData.get('title') ?? ''),
       author: String(formData.get('author') ?? ''),
       code: String(formData.get('code') ?? ''),
-      status: (formData.get('status') as books.Book['status']) ?? 'available',
-      notes: String(formData.get('notes') ?? ''),
       isbn: String(formData.get('isbn') ?? ''),
-      coverUrl: String(formData.get('coverUrl') ?? ''),
-      published: String(formData.get('published') ?? ''),
-      pages: Number(formData.get('pages')) || null,
-      summary: String(formData.get('summary') ?? ''),
+      status: (formData.get('status') as books.Book['status']) ?? 'available',
     });
     id = book.id;
   } catch (err) {
@@ -48,11 +41,6 @@ export async function updateBookAction(_state: FormState, formData: FormData): P
       author: String(formData.get('author') ?? ''),
       code: String(formData.get('code') ?? ''),
       isbn: String(formData.get('isbn') ?? ''),
-      coverUrl: String(formData.get('coverUrl') ?? ''),
-      notes: String(formData.get('notes') ?? ''),
-      published: String(formData.get('published') ?? ''),
-      pages: Number(formData.get('pages')) || null,
-      summary: String(formData.get('summary') ?? ''),
     });
     if (!updated) return { error: 'Book not found.' };
   } catch (err) {
@@ -62,13 +50,9 @@ export async function updateBookAction(_state: FormState, formData: FormData): P
   redirect(`/books/${id}`);
 }
 
-export async function setStatusAction(
-  id: string,
-  status: string,
-  extra: { borrower?: string; dueDate?: string } = {},
-): Promise<FormState> {
+export async function setStatusAction(id: string, status: string): Promise<FormState> {
   try {
-    const book = books.setStatus(id, status, extra);
+    const book = books.setStatus(id, status);
     if (!book) return { error: 'Book not found.' };
   } catch (err) {
     return { error: message(err) };
@@ -81,30 +65,6 @@ export async function deleteBookAction(id: string): Promise<FormState> {
   if (!books.deleteBook(id)) return { error: 'Book not found.' };
   refresh();
   redirect('/');
-}
-
-export async function setLibraryNameAction(_state: FormState, formData: FormData): Promise<FormState> {
-  const name = String(formData.get('name') ?? '').trim() || DEFAULT_LIBRARY_NAME;
-  books.setSetting('libraryName', name);
-  revalidatePath('/', 'layout');
-  return {};
-}
-
-export async function importBooksAction(payload: unknown): Promise<FormState & { added?: number; updated?: number }> {
-  const data = payload as { books?: books.BookInput[]; name?: string } | books.BookInput[];
-  const incoming = Array.isArray(data) ? data : data?.books;
-  if (!Array.isArray(incoming)) return { error: 'No "books" array found in that file.' };
-
-  try {
-    if (!Array.isArray(data) && typeof data.name === 'string' && data.name.trim()) {
-      books.setSetting('libraryName', data.name.trim());
-    }
-    const result = books.importBooks(incoming);
-    revalidatePath('/', 'layout');
-    return result;
-  } catch (err) {
-    return { error: message(err) };
-  }
 }
 
 /** Used by the scanner: turns a scanned barcode into a book id, or null. */

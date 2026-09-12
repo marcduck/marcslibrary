@@ -28,14 +28,7 @@ function connect(): DatabaseSync {
       title       TEXT NOT NULL,
       author      TEXT NOT NULL DEFAULT '',
       isbn        TEXT NOT NULL DEFAULT '',
-      cover_url   TEXT NOT NULL DEFAULT '',
-      published   TEXT NOT NULL DEFAULT '',
-      pages       INTEGER,
-      summary     TEXT NOT NULL DEFAULT '',
       status      TEXT NOT NULL DEFAULT 'available',
-      borrower    TEXT NOT NULL DEFAULT '',
-      due_date    TEXT NOT NULL DEFAULT '',
-      notes       TEXT NOT NULL DEFAULT '',
       added_at    TEXT NOT NULL,
       updated_at  TEXT NOT NULL
     );
@@ -43,15 +36,9 @@ function connect(): DatabaseSync {
       id       INTEGER PRIMARY KEY AUTOINCREMENT,
       book_id  TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
       status   TEXT NOT NULL,
-      borrower TEXT NOT NULL DEFAULT '',
-      note     TEXT NOT NULL DEFAULT '',
       at       TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS history_book ON history (book_id, id DESC);
-    CREATE TABLE IF NOT EXISTS settings (
-      key   TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
   `);
   return db;
 }
@@ -59,6 +46,13 @@ function connect(): DatabaseSync {
 export function db(): DatabaseSync {
   if (!globalThis.__libraryDb) globalThis.__libraryDb = connect();
   return globalThis.__libraryDb;
+}
+
+// Windows keeps the WAL/SHM files locked for as long as the handle stays open,
+// so tests must close it before they delete their throwaway database.
+export function closeDb(): void {
+  globalThis.__libraryDb?.close();
+  globalThis.__libraryDb = undefined;
 }
 
 export const dbFile = DB_FILE;

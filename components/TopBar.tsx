@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { IconButton } from '@/components/ui';
 
 type Props = {
   title: string;
@@ -10,11 +11,15 @@ export default function TopBar({ title, back, action }: Props) {
   return (
     <header className="topbar">
       {back ? (
-        <Link href={back} className="icon-btn" aria-label="Back">&lsaquo;</Link>
+        <IconButton asChild variant="plain" aria-label="Back">
+          <Link href={back}>&lsaquo;</Link>
+        </IconButton>
       ) : <span />}
       <h1>{title}</h1>
       {action ? (
-        <Link href={action.href} className="icon-btn" aria-label={action.aria}>{action.label}</Link>
+        <IconButton asChild variant="plain" aria-label={action.aria}>
+          <Link href={action.href}>{action.label}</Link>
+        </IconButton>
       ) : <span />}
     </header>
   );

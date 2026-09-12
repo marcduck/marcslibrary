@@ -33,14 +33,3 @@ export function formatCode(code: unknown): string {
   const trimmed = String(code ?? '').trim();
   return /^\d+$/.test(trimmed) ? trimmed.padStart(7, '0') : trimmed.toUpperCase();
 }
-
-/** EAN-13 barcodes starting 978/979 are ISBNs, and so are bare 10 digit codes. */
-export function cleanISBN(value: unknown): string {
-  return String(value ?? '').replace(/[^0-9Xx]/g, '').toUpperCase();
-}
-
-export function looksLikeISBN(value: unknown): boolean {
-  const isbn = cleanISBN(value);
-  if (isbn.length === 13) return /^97[89]/.test(isbn);
-  return isbn.length === 10;
-}

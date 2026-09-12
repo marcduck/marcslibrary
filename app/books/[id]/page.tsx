@@ -1,12 +1,19 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import TopBar from '@/components/TopBar';
-import Cover from '@/components/Cover';
 import StatusControls from '@/components/StatusControls';
 import DeleteBookButton from '@/components/DeleteBookButton';
 import { getBook } from '@/lib/books';
 import { statusLabel } from '@/lib/statuses';
-import { dueInfo } from '@/lib/due';
+import { Badge, Button, Card } from '@/components/ui';
+
+const COLOR: Record<string, string> = {
+  available: 'green',
+  loaned: 'amber',
+  hold: 'blue',
+  reading: 'purple',
+  missing: 'red',
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -15,62 +22,56 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
   const book = getBook(id);
   if (!book) notFound();
 
-  const due = dueInfo(book);
-  const facts = [
-    book.published && `First published ${book.published}`,
-    book.pages && `${book.pages} pages`,
-    book.isbn && `ISBN ${book.isbn}`,
-  ].filter(Boolean).join(' · ');
+  const searchQuery = [book.title, book.author].filter(Boolean).join(' ');
+  const searchHref = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
 
   return (
     <>
       <TopBar title="Book" back="/" />
       <main className="view">
-        <section className="card book-header">
-          <div className="book-hero">
-            <Cover title={book.title} coverUrl={book.coverUrl} size="lg" />
-            <div className="book-hero-text">
-              <h2>{book.title}</h2>
-              {book.author && <p className="author">{book.author}</p>}
-              <p className="status-line">
-                <span className={`status status-${book.status}`}>{statusLabel(book.status)}</span>
-                {book.borrower && <span className="borrower">{book.borrower}</span>}
-                {due && <span className={due.overdue ? 'overdue' : ''}>{due.text}</span>}
-              </p>
-              {facts && <p className="facts">{facts}</p>}
-              <p className="code-line">Barcode {book.code}</p>
+        <Card.Root variant="outline">
+          <Card.Body gap="2">
+            <Card.Title>{book.title}</Card.Title>
+            {book.author && <p className="author">{book.author}</p>}
+            <div className="status-line">
+              <Badge colorPalette={COLOR[book.status]}>{statusLabel(book.status)}</Badge>
             </div>
-          </div>
-        </section>
+            {book.isbn && <p className="facts">ISBN {book.isbn}</p>}
+            <p className="code-line">Barcode {book.code}</p>
+          </Card.Body>
+        </Card.Root>
 
         <StatusControls book={book} />
 
-        {book.summary && (
-          <section className="card"><h3>About</h3><p className="notes">{book.summary}</p></section>
-        )}
-        {book.notes && (
-          <section className="card"><h3>Notes</h3><p className="notes">{book.notes}</p></section>
-        )}
+        <Card.Root variant="outline">
+          <Card.Body>
+            <div className="actions-row">
+              <Button asChild variant="outline">
+                <a href={searchHref} target="_blank" rel="noopener noreferrer">Web Search</a>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href={`/books/${book.id}/edit`}>Edit details</Link>
+              </Button>
+              <DeleteBookButton id={book.id} title={book.title} />
+            </div>
+          </Card.Body>
+        </Card.Root>
 
         {book.history.length > 0 && (
-          <section className="card">
-            <h3>History</h3>
-            <ul className="history">
-              {book.history.slice(0, 8).map((entry, i) => (
-                <li key={i}>
-                  <span>{statusLabel(entry.status)}{entry.borrower && ` — ${entry.borrower}`}</span>
-                  <time dateTime={entry.at}>{new Date(entry.at).toLocaleDateString('en-GB')}</time>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <Card.Root variant="outline">
+            <Card.Body>
+              <Card.Title mb="2">History</Card.Title>
+              <ul className="history">
+                {book.history.slice(0, 8).map((entry, i) => (
+                  <li key={i}>
+                    <span>{statusLabel(entry.status)}</span>
+                    <time dateTime={entry.at}>{new Date(entry.at).toLocaleDateString('en-GB')}</time>
+                  </li>
+                ))}
+              </ul>
+            </Card.Body>
+          </Card.Root>
         )}
-
-        <section className="card actions">
-          <Link className="btn" href={`/books/${book.id}/label`}>Print label</Link>
-          <Link className="btn" href={`/books/${book.id}/edit`}>Edit details</Link>
-          <DeleteBookButton id={book.id} title={book.title} />
-        </section>
       </main>
     </>
   );

@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "styled-system/*": [
+        "./styled-system/*"
       ]
     },
     "allowImportingTsExtensions": true

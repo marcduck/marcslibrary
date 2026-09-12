@@ -1,66 +1,46 @@
 'use client';
 
-import { useActionState, useState } from 'react';
-import CatalogueSearch from './CatalogueSearch';
+import { useActionState } from 'react';
 import { updateBookAction, type FormState } from '@/app/actions';
+import { Button, Card, Field, Input } from '@/components/ui';
 import type { Book } from '@/lib/books';
-import type { CatalogueBook } from '@/lib/catalogue';
 
 export default function EditBookForm({ book }: { book: Book }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(updateBookAction, {});
-  const [fields, setFields] = useState({
-    title: book.title,
-    author: book.author,
-    isbn: book.isbn,
-    coverUrl: book.coverUrl,
-  });
-  const [extra, setExtra] = useState({ published: book.published, pages: book.pages, summary: book.summary });
-
-  const pick = (found: CatalogueBook) => {
-    setFields({
-      title: found.title || fields.title,
-      author: found.author || fields.author,
-      isbn: found.isbn || fields.isbn,
-      coverUrl: found.coverUrl || fields.coverUrl,
-    });
-    setExtra({
-      published: found.published || extra.published,
-      pages: found.pages ?? extra.pages,
-      summary: found.summary || extra.summary,
-    });
-  };
-
-  const set = (key: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setFields((prev) => ({ ...prev, [key]: e.target.value }));
 
   return (
-    <>
-      <CatalogueSearch
-        initialQuery={book.isbn || `${book.title} ${book.author}`.trim()}
-        onPick={pick}
-        label="Look up details"
-        hint="Use this to add or replace the cover and book details."
-      />
+    <Card.Root variant="outline">
+      <Card.Body>
+        <form className="form" action={formAction}>
+          <input type="hidden" name="id" value={book.id} />
 
-      <form className="card form" action={formAction}>
-        <input type="hidden" name="id" value={book.id} />
-        <input type="hidden" name="published" value={extra.published} />
-        <input type="hidden" name="pages" value={extra.pages ?? ''} />
-        <input type="hidden" name="summary" value={extra.summary} />
+          <Field.Root required>
+            <Field.Label>Title</Field.Label>
+            <Input name="title" defaultValue={book.title} required />
+          </Field.Root>
 
-        <label>Title <input type="text" name="title" value={fields.title} onChange={set('title')} required /></label>
-        <label>Author <input type="text" name="author" value={fields.author} onChange={set('author')} /></label>
-        <label>Shelf barcode <input type="text" name="code" defaultValue={book.code} required /></label>
-        <label>ISBN <input type="text" name="isbn" value={fields.isbn} onChange={set('isbn')} /></label>
-        <label>Cover image URL <input type="text" name="coverUrl" value={fields.coverUrl} onChange={set('coverUrl')} /></label>
-        <label>Notes <textarea name="notes" rows={3} defaultValue={book.notes} /></label>
+          <Field.Root>
+            <Field.Label>Author</Field.Label>
+            <Input name="author" defaultValue={book.author} />
+          </Field.Root>
 
-        {state.error && <p className="hint error">{state.error}</p>}
+          <Field.Root required>
+            <Field.Label>Barcode</Field.Label>
+            <Input name="code" defaultValue={book.code} required />
+          </Field.Root>
 
-        <button type="submit" className="btn btn-primary" disabled={pending}>
-          {pending ? 'Saving…' : 'Save changes'}
-        </button>
-      </form>
-    </>
+          <Field.Root>
+            <Field.Label>ISBN</Field.Label>
+            <Input name="isbn" defaultValue={book.isbn} />
+          </Field.Root>
+
+          {state.error && <Field.Root invalid><Field.ErrorText>{state.error}</Field.ErrorText></Field.Root>}
+
+          <Button type="submit" colorPalette="blue" disabled={pending}>
+            {pending ? 'Saving…' : 'Save changes'}
+          </Button>
+        </form>
+      </Card.Body>
+    </Card.Root>
   );
 }

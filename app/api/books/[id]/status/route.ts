@@ -9,7 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const body = await request.json().catch(() => ({}));
 
   try {
-    const book = setStatus(id, body.status, body);
+    const book = setStatus(id, body.status);
     if (!book) return NextResponse.json({ error: 'Book not found.' }, { status: 404 });
     revalidatePath('/');
     revalidatePath(`/books/${id}`);

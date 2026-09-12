@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Scanner, cameraSupported, secureContextOK } from '@/lib/scanner';
 import { findByCodeAction } from '@/app/actions';
+import { Button, Card, Field, Input } from '@/components/ui';
 
 export default function ScanClient() {
   const router = useRouter();
@@ -69,25 +70,29 @@ export default function ScanClient() {
             : 'The camera needs an https connection (or localhost). You can still type a barcode below.'}
       </p>
 
-      <form
-        className="inline-form card"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (manual.trim()) void openScanned(manual.trim());
-        }}
-      >
-        <label>
-          Barcode number
-          <input
-            type="text"
-            inputMode="numeric"
-            value={manual}
-            onChange={(e) => setManual(e.target.value)}
-            placeholder="0000167"
-          />
-        </label>
-        <button type="submit" className="btn btn-primary">Look up</button>
-      </form>
+      <Card.Root variant="outline">
+        <Card.Body>
+          <form
+            className="inline-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (manual.trim()) void openScanned(manual.trim());
+            }}
+          >
+            <Field.Root>
+              <Field.Label>Barcode number</Field.Label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={manual}
+                onChange={(e) => setManual(e.target.value)}
+                placeholder="0000167"
+              />
+            </Field.Root>
+            <Button type="submit" colorPalette="blue">Look up</Button>
+          </form>
+        </Card.Body>
+      </Card.Root>
     </>
   );
 }
