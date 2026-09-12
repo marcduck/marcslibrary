@@ -10,8 +10,8 @@ type Props = { searchParams: Promise<{ q?: string; status?: string }> };
 
 export default async function LibraryPage({ searchParams }: Props) {
   const { q = '', status = 'all' } = await searchParams;
-  const books = listBooks({ q, status });
-  const totals = counts();
+  const books = await listBooks({ q, status });
+  const totals = await counts();
 
   return (
     <>

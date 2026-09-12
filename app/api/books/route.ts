@@ -6,10 +6,11 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  return NextResponse.json({
-    books: listBooks({ q: searchParams.get('q') || '', status: searchParams.get('status') || 'all' }),
-    counts: counts(),
-  });
+  const [books, bookCounts] = await Promise.all([
+    listBooks({ q: searchParams.get('q') || '', status: searchParams.get('status') || 'all' }),
+    counts(),
+  ]);
+  return NextResponse.json({ books, counts: bookCounts });
 }
 
 export async function POST(request: Request) {
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const book = createBook(body);
+    const book = await createBook(body);
     revalidatePath('/');
     return NextResponse.json(book, { status: 201 });
   } catch (err) {

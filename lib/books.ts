@@ -2,7 +2,7 @@
 // thin layers over these functions.
 
 import 'server-only';
-import { db } from './db.ts';
+import { db, ready } from './db.ts';
 import { isStatus, normaliseCode, formatCode, type Status } from './statuses.ts';
 
 export type HistoryEntry = {
@@ -52,13 +52,15 @@ function rowToBook(row: BookRow, history: HistoryEntry[] = []): Book {
   };
 }
 
-function historyFor(bookId: string, limit = 20): HistoryEntry[] {
-  const rows = db()
-    .prepare('SELECT status, at FROM history WHERE book_id = ? ORDER BY id DESC LIMIT ?')
-    .all(bookId, limit) as unknown as HistoryEntry[];
-  // node:sqlite hands back null-prototype objects, which React refuses to pass
-  // from a server component to a client one. Copy them into plain objects.
-  return rows.map((row) => ({ status: row.status, at: row.at }));
+async function historyFor(bookId: string, limit = 20): Promise<HistoryEntry[]> {
+  const result = await db().execute({
+    sql: 'SELECT status, at FROM history WHERE book_id = ? ORDER BY id DESC LIMIT ?',
+    args: [bookId, limit],
+  });
+  // Rows from @libsql/client are array-like, not plain objects, and React
+  // refuses to pass those from a server component to a client one. Copy them
+  // into plain objects.
+  return result.rows.map((row) => ({ status: String(row.status), at: String(row.at) }));
 }
 
 export class ConflictError extends Error {
@@ -70,7 +72,8 @@ export class ConflictError extends Error {
   }
 }
 
-export function listBooks({ q = '', status = 'all' }: { q?: string; status?: string } = {}): Book[] {
+export async function listBooks({ q = '', status = 'all' }: { q?: string; status?: string } = {}): Promise<Book[]> {
+  await ready();
   const where: string[] = [];
   const params: unknown[] = [];
 
@@ -93,72 +96,88 @@ export function listBooks({ q = '', status = 'all' }: { q?: string; status?: str
   }
 
   const sql = `SELECT * FROM books ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY title COLLATE NOCASE`;
-  return (db().prepare(sql).all(...(params as never[])) as unknown as BookRow[]).map((row) => rowToBook(row));
+  const result = await db().execute({ sql, args: params as (string | number)[] });
+  return result.rows.map((row) => rowToBook(row as unknown as BookRow));
 }
 
-export function getBook(id: string): Book | null {
-  const row = db().prepare('SELECT * FROM books WHERE id = ?').get(id) as unknown as BookRow | undefined;
-  return row ? rowToBook(row, historyFor(id)) : null;
+export async function getBook(id: string): Promise<Book | null> {
+  await ready();
+  const result = await db().execute({ sql: 'SELECT * FROM books WHERE id = ?', args: [id] });
+  const row = result.rows[0] as unknown as BookRow | undefined;
+  return row ? rowToBook(row, await historyFor(id)) : null;
 }
 
-export function getBookByCode(code: string): Book | null {
-  const row = db().prepare('SELECT * FROM books WHERE code_key = ?').get(normaliseCode(code)) as unknown as BookRow | undefined;
-  return row ? rowToBook(row, historyFor(row.id)) : null;
+export async function getBookByCode(code: string): Promise<Book | null> {
+  await ready();
+  const result = await db().execute({ sql: 'SELECT * FROM books WHERE code_key = ?', args: [normaliseCode(code)] });
+  const row = result.rows[0] as unknown as BookRow | undefined;
+  return row ? rowToBook(row, await historyFor(row.id)) : null;
 }
 
-export function counts(): Counts {
-  const rows = db().prepare('SELECT status, COUNT(*) AS n FROM books GROUP BY status').all() as unknown as
-    { status: string; n: number }[];
+export async function counts(): Promise<Counts> {
+  await ready();
+  const result = await db().execute('SELECT status, COUNT(*) AS n FROM books GROUP BY status');
   const out: Counts = { all: 0 };
-  for (const row of rows) {
-    out[row.status] = row.n;
-    out.all += row.n;
+  for (const row of result.rows) {
+    const status = String(row.status);
+    const n = Number(row.n);
+    out[status] = n;
+    out.all += n;
   }
   return out;
 }
 
-export function nextCode(): string {
-  const rows = db().prepare("SELECT code_key FROM books WHERE code_key GLOB '[0-9]*'").all() as unknown as
-    { code_key: string }[];
-  const highest = rows.reduce((max, row) => {
+export async function nextCode(): Promise<string> {
+  await ready();
+  const result = await db().execute("SELECT code_key FROM books WHERE code_key GLOB '[0-9]*'");
+  const highest = result.rows.reduce((max, row) => {
     const n = Number(row.code_key);
     return Number.isFinite(n) && n > max ? n : max;
   }, 0);
   return formatCode(String(highest > 0 ? highest + 1 : START_CODE));
 }
 
-export function createBook(input: BookInput): Book {
+export async function createBook(input: BookInput): Promise<Book> {
+  await ready();
   const code = formatCode(input.code);
   const codeKey = normaliseCode(code);
   if (!codeKey) throw new Error('A barcode is required.');
 
-  const clash = getBookByCode(codeKey);
+  const clash = await getBookByCode(codeKey);
   if (clash) throw new ConflictError(`Barcode ${clash.code} is already "${clash.title}".`, clash);
 
   const status: Status = isStatus(input.status) ? input.status : 'available';
   const id = newId();
   const at = now();
 
-  db().prepare(`INSERT INTO books
-      (id, code, code_key, title, author, isbn, status, added_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(
-      id, code, codeKey,
-      String(input.title ?? '').trim() || 'Untitled',
-      String(input.author ?? '').trim(),
-      String(input.isbn ?? '').trim(),
-      status,
-      at, at,
-    );
-  db().prepare('INSERT INTO history (book_id, status, at) VALUES (?,?,?)').run(id, status, at);
+  await db().batch(
+    [
+      {
+        sql: `INSERT INTO books
+          (id, code, code_key, title, author, isbn, status, added_at, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?)`,
+        args: [
+          id, code, codeKey,
+          String(input.title ?? '').trim() || 'Untitled',
+          String(input.author ?? '').trim(),
+          String(input.isbn ?? '').trim(),
+          status,
+          at, at,
+        ],
+      },
+      { sql: 'INSERT INTO history (book_id, status, at) VALUES (?,?,?)', args: [id, status, at] },
+    ],
+    'write',
+  );
 
-  return getBook(id)!;
+  return (await getBook(id))!;
 }
 
 const EDITABLE: Record<string, string> = { title: 'title', author: 'author', isbn: 'isbn' };
 
-export function updateBook(id: string, changes: BookInput): Book | null {
-  const existing = getBook(id);
+export async function updateBook(id: string, changes: BookInput): Promise<Book | null> {
+  await ready();
+  const existing = await getBook(id);
   if (!existing) return null;
 
   const sets: string[] = [];
@@ -175,7 +194,7 @@ export function updateBook(id: string, changes: BookInput): Book | null {
     const code = formatCode(changes.code);
     const codeKey = normaliseCode(code);
     if (!codeKey) throw new Error('A barcode is required.');
-    const clash = getBookByCode(codeKey);
+    const clash = await getBookByCode(codeKey);
     if (clash && clash.id !== id) throw new ConflictError(`Barcode ${clash.code} is already "${clash.title}".`, clash);
     sets.push('code = ?', 'code_key = ?');
     params.push(code, codeKey);
@@ -185,21 +204,29 @@ export function updateBook(id: string, changes: BookInput): Book | null {
 
   sets.push('updated_at = ?');
   params.push(now(), id);
-  db().prepare(`UPDATE books SET ${sets.join(', ')} WHERE id = ?`).run(...(params as never[]));
+  await db().execute({ sql: `UPDATE books SET ${sets.join(', ')} WHERE id = ?`, args: params as (string | number)[] });
   return getBook(id);
 }
 
-export function setStatus(id: string, status: string): Book | null {
+export async function setStatus(id: string, status: string): Promise<Book | null> {
+  await ready();
   if (!isStatus(status)) throw new Error(`Unknown status "${status}".`);
-  if (!getBook(id)) return null;
+  if (!(await getBook(id))) return null;
 
   const at = now();
-  db().prepare('UPDATE books SET status = ?, updated_at = ? WHERE id = ?').run(status, at, id);
-  db().prepare('INSERT INTO history (book_id, status, at) VALUES (?,?,?)').run(id, status, at);
+  await db().batch(
+    [
+      { sql: 'UPDATE books SET status = ?, updated_at = ? WHERE id = ?', args: [status, at, id] },
+      { sql: 'INSERT INTO history (book_id, status, at) VALUES (?,?,?)', args: [id, status, at] },
+    ],
+    'write',
+  );
 
   return getBook(id);
 }
 
-export function deleteBook(id: string): boolean {
-  return db().prepare('DELETE FROM books WHERE id = ?').run(id).changes > 0;
+export async function deleteBook(id: string): Promise<boolean> {
+  await ready();
+  const result = await db().execute({ sql: 'DELETE FROM books WHERE id = ?', args: [id] });
+  return result.rowsAffected > 0;
 }

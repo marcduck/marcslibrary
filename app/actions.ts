@@ -18,7 +18,7 @@ function refresh(id?: string) {
 export async function createBookAction(_state: FormState, formData: FormData): Promise<FormState> {
   let id: string;
   try {
-    const book = books.createBook({
+    const book = await books.createBook({
       title: String(formData.get('title') ?? ''),
       author: String(formData.get('author') ?? ''),
       code: String(formData.get('code') ?? ''),
@@ -36,7 +36,7 @@ export async function createBookAction(_state: FormState, formData: FormData): P
 export async function updateBookAction(_state: FormState, formData: FormData): Promise<FormState> {
   const id = String(formData.get('id') ?? '');
   try {
-    const updated = books.updateBook(id, {
+    const updated = await books.updateBook(id, {
       title: String(formData.get('title') ?? ''),
       author: String(formData.get('author') ?? ''),
       code: String(formData.get('code') ?? ''),
@@ -52,7 +52,7 @@ export async function updateBookAction(_state: FormState, formData: FormData): P
 
 export async function setStatusAction(id: string, status: string): Promise<FormState> {
   try {
-    const book = books.setStatus(id, status);
+    const book = await books.setStatus(id, status);
     if (!book) return { error: 'Book not found.' };
   } catch (err) {
     return { error: message(err) };
@@ -62,13 +62,13 @@ export async function setStatusAction(id: string, status: string): Promise<FormS
 }
 
 export async function deleteBookAction(id: string): Promise<FormState> {
-  if (!books.deleteBook(id)) return { error: 'Book not found.' };
+  if (!(await books.deleteBook(id))) return { error: 'Book not found.' };
   refresh();
   redirect('/');
 }
 
 /** Used by the scanner: turns a scanned barcode into a book id, or null. */
 export async function findByCodeAction(code: string): Promise<{ id: string } | null> {
-  const book = books.getBookByCode(code);
+  const book = await books.getBookByCode(code);
   return book ? { id: book.id } : null;
 }

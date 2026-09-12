@@ -8,7 +8,7 @@ type Context = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: Context) {
   const { id } = await params;
-  const book = getBook(id);
+  const book = await getBook(id);
   return book ? NextResponse.json(book) : NextResponse.json({ error: 'Book not found.' }, { status: 404 });
 }
 
@@ -20,7 +20,7 @@ export async function PATCH(request: Request, { params }: Context) {
   }
 
   try {
-    const book = updateBook(id, body);
+    const book = await updateBook(id, body);
     if (!book) return NextResponse.json({ error: 'Book not found.' }, { status: 404 });
     revalidatePath('/');
     revalidatePath(`/books/${id}`);
@@ -35,7 +35,7 @@ export async function PATCH(request: Request, { params }: Context) {
 
 export async function DELETE(_request: Request, { params }: Context) {
   const { id } = await params;
-  if (!deleteBook(id)) return NextResponse.json({ error: 'Book not found.' }, { status: 404 });
+  if (!(await deleteBook(id))) return NextResponse.json({ error: 'Book not found.' }, { status: 404 });
   revalidatePath('/');
   return NextResponse.json({ deleted: true });
 }

@@ -4,12 +4,18 @@ A barebones library app. Every book has a barcode label; scan one with your phon
 camera to pull up the book and change its status.
 
 Built with **Next.js** (App Router) and **TypeScript**. Books live in a SQLite
-database on the server, so every phone and laptop you open it on sees the same
-library. Adding a book looks it up in a free online catalogue and fills in the
-cover, author, year and page count for you.
+database, so every phone and laptop you open it on sees the same library.
+Adding a book looks it up in a free online catalogue and fills in the cover,
+author, year and page count for you.
 
-Needs **Node 22.5 or newer**. The database uses `node:sqlite` from the standard
-library, so there is no database dependency to install or compile.
+Needs **Node 22.5 or newer**. The database goes through
+[`@libsql/client`](https://github.com/tursodatabase/libsql-client-ts):
+
+- **Locally**, with no setup, it opens a plain SQLite file at
+  `data/library.db`. Nothing to install or configure.
+- **On Vercel**, it talks to a free [Turso](https://turso.tech) database
+  instead — see [Deploying on Vercel](#deploying-on-vercel) below. Vercel does
+  not keep files between requests, so a local file cannot be used there.
 
 ## Running it
 
@@ -20,15 +26,37 @@ npm run dev            # http://localhost:3000
 npm run build && npm start   # production
 ```
 
-The database is created at `data/library.db` on first run. Useful environment
-variables:
+Useful environment variables:
 
 | Variable | Default | What it's for |
 | --- | --- | --- |
-| `DB_FILE` | `data/library.db` | Where the database lives |
+| `DB_FILE` | `data/library.db` | Where the local database file lives (ignored once `TURSO_DATABASE_URL` is set) |
+| `TURSO_DATABASE_URL` | — | Turso database URL; when set, the app uses Turso instead of a local file |
+| `TURSO_AUTH_TOKEN` | — | Auth token for the Turso database |
 | `PORT` | `3000` | Port to listen on (`next start -p`) |
 | `OPENLIBRARY_BASE`, `GOOGLE_BOOKS_BASE` | the real ones | Point the catalogue elsewhere |
 | `LOOKUP_TIMEOUT_MS` | `8000` | How long to wait on the catalogue |
+
+## Deploying on Vercel
+
+1. Make a free database at [turso.tech](https://turso.tech) (sign up, then
+   `turso db create marcslibrary` with their CLI, or use their web console).
+2. Get its URL and an auth token:
+   ```sh
+   turso db show marcslibrary --url
+   turso db tokens create marcslibrary
+   ```
+3. In your Vercel project, add two environment variables:
+   `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`, with the values from step 2.
+4. Deploy. The app creates its tables on first request — no migration step
+   needed.
+
+If you used the app locally first and want to keep that data, create the
+Turso database from your local file instead of empty:
+```sh
+turso db create marcslibrary --from-file data/library.db
+```
+Otherwise the library just starts empty on Turso and you re-add your books.
 
 ## Scanning from your phone
 
@@ -134,7 +162,7 @@ Set `CHROME_PATH` if Playwright's own Chromium isn't installed.
 | `app/actions.ts` | Server actions: add, edit, set status, delete, import |
 | `app/api/` | The REST API, thin wrappers over `lib/books.ts` |
 | `lib/books.ts` | Every read and write of the library |
-| `lib/db.ts` | SQLite connection and schema |
+| `lib/db.ts` | Database connection and schema, local file or Turso |
 | `lib/catalogue.ts` | Open Library and Google Books, with pure parsers |
 | `lib/barcode.ts` | Code 128 encoder, rendered as SVG for labels |
 | `lib/scanner.ts` | Camera scanning |

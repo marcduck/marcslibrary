@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function EditBookPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const book = getBook(id);
+  const book = await getBook(id);
   if (!book) notFound();
 
   return (
