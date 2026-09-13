@@ -1,8 +1,10 @@
 import { Suspense } from 'react';
+import Link from 'next/link';
 import TopBar from '@/components/TopBar';
-import BookRow from '@/components/BookRow';
 import LibrarySearch from '@/components/LibrarySearch';
 import { listBooks, counts } from '@/lib/books';
+import { statusLabel, statusColor } from '@/lib/statuses';
+import { Badge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +24,18 @@ export default async function LibraryPage({ searchParams }: Props) {
         </Suspense>
         {books.length > 0 ? (
           <ul className="book-list">
-            {books.map((book) => <BookRow key={book.id} book={book} />)}
+            {books.map((book) => (
+              <li key={book.id} className="book-row">
+                <Link href={`/books/${book.id}`} className="book-link">
+                  <div className="book-main">
+                    <span className="book-title">{book.title}</span>
+                    {book.author && <span className="book-meta">{book.author}</span>}
+                    <span className="book-code">{book.code}</span>
+                  </div>
+                  <Badge colorPalette={statusColor(book.status)}>{statusLabel(book.status)}</Badge>
+                </Link>
+              </li>
+            ))}
           </ul>
         ) : (
           <p className="empty">

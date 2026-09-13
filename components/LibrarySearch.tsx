@@ -15,6 +15,14 @@ export default function LibrarySearch({ counts }: { counts: Counts }) {
   const [query, setQuery] = useState(params.get('q') || '');
   const firstRender = useRef(true);
 
+  const navigate = (q: string, statusFilter: string) => {
+    const next = new URLSearchParams();
+    if (q.trim()) next.set('q', q.trim());
+    if (statusFilter !== 'all') next.set('status', statusFilter);
+    const qs = next.toString();
+    router.replace(qs ? `/?${qs}` : '/', { scroll: false });
+  };
+
   // Typing updates the URL, which re-runs the search on the server. Debounced so
   // a fast typist does not fire a request per keystroke.
   useEffect(() => {
@@ -22,23 +30,11 @@ export default function LibrarySearch({ counts }: { counts: Counts }) {
       firstRender.current = false;
       return;
     }
-    const timer = setTimeout(() => {
-      const next = new URLSearchParams();
-      if (query.trim()) next.set('q', query.trim());
-      if (status !== 'all') next.set('status', status);
-      const qs = next.toString();
-      router.replace(qs ? `/?${qs}` : '/', { scroll: false });
-    }, 250);
+    const timer = setTimeout(() => navigate(query, status), 250);
     return () => clearTimeout(timer);
   }, [query, status, router]);
 
-  const setStatusFilter = (id: string) => {
-    const next = new URLSearchParams();
-    if (query.trim()) next.set('q', query.trim());
-    if (id !== 'all') next.set('status', id);
-    const qs = next.toString();
-    router.replace(qs ? `/?${qs}` : '/', { scroll: false });
-  };
+  const setStatusFilter = (id: string) => navigate(query, id);
 
   return (
     <>

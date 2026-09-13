@@ -2,14 +2,14 @@
 
 export type Status = 'available' | 'loaned' | 'hold' | 'reading' | 'missing';
 
-export type StatusInfo = { id: Status; label: string; hint: string };
+export type StatusInfo = { id: Status; label: string; hint: string; color: string };
 
 export const STATUSES: StatusInfo[] = [
-  { id: 'available', label: 'Available', hint: 'On the shelf' },
-  { id: 'loaned',    label: 'Loaned',    hint: 'Someone has it' },
-  { id: 'hold',      label: 'On hold',   hint: 'Reserved for someone' },
-  { id: 'reading',   label: 'Reading',   hint: 'Currently being read' },
-  { id: 'missing',   label: 'Missing',   hint: 'Lost or unaccounted for' },
+  { id: 'available', label: 'Available', hint: 'On the shelf',               color: 'green' },
+  { id: 'loaned',    label: 'Loaned',    hint: 'Someone has it',             color: 'amber' },
+  { id: 'hold',      label: 'On hold',   hint: 'Reserved for someone',       color: 'blue' },
+  { id: 'reading',   label: 'Reading',   hint: 'Currently being read',       color: 'purple' },
+  { id: 'missing',   label: 'Missing',   hint: 'Lost or unaccounted for',    color: 'red' },
 ];
 
 export const STATUS_IDS = STATUSES.map((s) => s.id);
@@ -20,6 +20,10 @@ export function isStatus(id: unknown): id is Status {
 
 export function statusLabel(id: string): string {
   return STATUSES.find((s) => s.id === id)?.label ?? id;
+}
+
+export function statusColor(id: string): string {
+  return STATUSES.find((s) => s.id === id)?.color ?? 'gray';
 }
 
 // Barcodes get typed, scanned and printed with different amounts of padding,

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import TopBar from '@/components/TopBar';
-import EditBookForm from '@/components/EditBookForm';
+import BookForm from '@/components/BookForm';
 import { getBook } from '@/lib/books';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export default async function EditBookPage({ params }: { params: Promise<{ id: s
     <>
       <TopBar title="Edit book" back={`/books/${book.id}`} />
       <main className="view">
-        <EditBookForm book={book} />
+        <BookForm book={book} />
       </main>
     </>
   );

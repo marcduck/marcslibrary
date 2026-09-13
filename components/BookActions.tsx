@@ -3,11 +3,11 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { STATUSES } from '@/lib/statuses';
-import { setStatusAction } from '@/app/actions';
-import { Card, Field, SegmentGroup } from '@/components/ui';
+import { setStatusAction, deleteBookAction } from '@/app/actions';
+import { Button, Card, Field, SegmentGroup } from '@/components/ui';
 import type { Book } from '@/lib/books';
 
-export default function StatusControls({ book }: { book: Book }) {
+export function StatusControls({ book }: { book: Book }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState('');
@@ -36,5 +36,23 @@ export default function StatusControls({ book }: { book: Book }) {
         {error && <Field.Root invalid><Field.ErrorText>{error}</Field.ErrorText></Field.Root>}
       </Card.Body>
     </Card.Root>
+  );
+}
+
+export function DeleteBookButton({ id, title }: { id: string; title: string }) {
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <Button
+      colorPalette="red"
+      variant="outline"
+      disabled={pending}
+      onClick={() => {
+        if (!confirm(`Remove "${title}" from the library?`)) return;
+        startTransition(() => { void deleteBookAction(id); });
+      }}
+    >
+      {pending ? 'Removing…' : 'Remove book'}
+    </Button>
   );
 }

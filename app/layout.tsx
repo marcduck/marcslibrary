@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { ThemeProvider } from 'next-themes';
-import TabBar from '@/components/TabBar';
-import ThemeSwitch from '@/components/ThemeSwitch';
+import { TabBar, ThemeSwitch } from '@/components/Chrome';
 import './globals.css';
 
 export const metadata: Metadata = {

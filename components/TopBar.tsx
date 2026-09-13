@@ -4,10 +4,9 @@ import { IconButton } from '@/components/ui';
 type Props = {
   title: string;
   back?: string;
-  action?: { href: string; label: string; aria: string };
 };
 
-export default function TopBar({ title, back, action }: Props) {
+export default function TopBar({ title, back }: Props) {
   return (
     <header className="topbar">
       {back ? (
@@ -16,11 +15,7 @@ export default function TopBar({ title, back, action }: Props) {
         </IconButton>
       ) : <span />}
       <h1>{title}</h1>
-      {action ? (
-        <IconButton asChild variant="plain" aria-label={action.aria}>
-          <Link href={action.href}>{action.label}</Link>
-        </IconButton>
-      ) : <span />}
+      <span />
     </header>
   );
 }

@@ -173,7 +173,7 @@ export async function createBook(input: BookInput): Promise<Book> {
   return (await getBook(id))!;
 }
 
-const EDITABLE: Record<string, string> = { title: 'title', author: 'author', isbn: 'isbn' };
+const EDITABLE = ['title', 'author', 'isbn'] as const;
 
 export async function updateBook(id: string, changes: BookInput): Promise<Book | null> {
   await ready();
@@ -183,10 +183,10 @@ export async function updateBook(id: string, changes: BookInput): Promise<Book |
   const sets: string[] = [];
   const params: unknown[] = [];
 
-  for (const [key, column] of Object.entries(EDITABLE)) {
-    const value = (changes as Record<string, unknown>)[key];
+  for (const key of EDITABLE) {
+    const value = changes[key];
     if (value === undefined) continue;
-    sets.push(`${column} = ?`);
+    sets.push(`${key} = ?`);
     params.push(String(value ?? '').trim());
   }
 

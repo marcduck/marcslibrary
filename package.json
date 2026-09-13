@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "A barebones library app: scan a barcode, see the book, change its status.",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=22.5.0"
   },
@@ -10,8 +11,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --conditions=react-server --test",
-    "test:e2e": "node scripts/e2e.mjs"
+    "test": "node --conditions=react-server --test"
   },
   "dependencies": {
     "@ark-ui/react": "^5.39.1",

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache';
-import { listBooks, counts, createBook, ConflictError } from '@/lib/books';
+import { listBooks, counts, createBook } from '@/lib/books';
+import { refreshBooks, readJsonBody, errorResponse } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,22 +14,17 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  if (!body || typeof body !== 'object') {
-    return NextResponse.json({ error: 'Request body is not valid JSON.' }, { status: 400 });
-  }
+  const body = await readJsonBody(request);
+  if (!body) return NextResponse.json({ error: 'Request body is not valid JSON.' }, { status: 400 });
   if (!String(body.title ?? '').trim()) {
     return NextResponse.json({ error: 'A title is required.' }, { status: 400 });
   }
 
   try {
     const book = await createBook(body);
-    revalidatePath('/');
+    refreshBooks();
     return NextResponse.json(book, { status: 201 });
   } catch (err) {
-    if (err instanceof ConflictError) {
-      return NextResponse.json({ error: err.message, book: err.book }, { status: 409 });
-    }
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Could not add that book.' }, { status: 400 });
+    return errorResponse(err, 'Could not add that book.');
   }
 }

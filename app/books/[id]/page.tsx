@@ -1,19 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import TopBar from '@/components/TopBar';
-import StatusControls from '@/components/StatusControls';
-import DeleteBookButton from '@/components/DeleteBookButton';
+import { StatusControls, DeleteBookButton } from '@/components/BookActions';
 import { getBook } from '@/lib/books';
-import { statusLabel } from '@/lib/statuses';
+import { statusLabel, statusColor } from '@/lib/statuses';
 import { Badge, Button, Card } from '@/components/ui';
-
-const COLOR: Record<string, string> = {
-  available: 'green',
-  loaned: 'amber',
-  hold: 'blue',
-  reading: 'purple',
-  missing: 'red',
-};
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +25,7 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
             <Card.Title>{book.title}</Card.Title>
             {book.author && <p className="author">{book.author}</p>}
             <div className="status-line">
-              <Badge colorPalette={COLOR[book.status]}>{statusLabel(book.status)}</Badge>
+              <Badge colorPalette={statusColor(book.status)}>{statusLabel(book.status)}</Badge>
             </div>
             {book.isbn && <p className="facts">ISBN {book.isbn}</p>}
             <p className="code-line">Barcode {book.code}</p>
