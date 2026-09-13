@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listBooks, counts, createBook } from '@/lib/books';
 import { refreshBooks, readJsonBody, errorResponse } from '@/lib/api';
+import { copy } from '@/lib/copy';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +16,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await readJsonBody(request);
-  if (!body) return NextResponse.json({ error: 'Request body is not valid JSON.' }, { status: 400 });
+  if (!body) return NextResponse.json({ error: copy.errors.invalidJson }, { status: 400 });
   if (!String(body.title ?? '').trim()) {
-    return NextResponse.json({ error: 'A title is required.' }, { status: 400 });
+    return NextResponse.json({ error: copy.errors.titleRequired }, { status: 400 });
   }
 
   try {
@@ -25,6 +26,6 @@ export async function POST(request: Request) {
     refreshBooks();
     return NextResponse.json(book, { status: 201 });
   } catch (err) {
-    return errorResponse(err, 'Could not add that book.');
+    return errorResponse(err, copy.errors.couldNotAddBook);
   }
 }

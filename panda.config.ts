@@ -12,8 +12,6 @@ import { durations } from './theme/tokens/durations'
 import { shadows } from './theme/tokens/shadows'
 import { zIndex } from './theme/tokens/z-index'
 
-// preset-panda ships its own default color tokens, which would shadow the
-// Park UI palette below, so drop them before they're merged.
 const removePandaColors = definePlugin({
   name: 'Remove Panda Preset Colors',
   hooks: {

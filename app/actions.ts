@@ -3,11 +3,12 @@
 import { redirect } from 'next/navigation';
 import * as books from '@/lib/books';
 import { refreshBooks } from '@/lib/api';
+import { copy } from '@/lib/copy';
 
 export type FormState = { error?: string };
 
 function message(err: unknown): string {
-  return err instanceof Error ? err.message : 'Something went wrong.';
+  return err instanceof Error ? err.message : copy.errors.generic;
 }
 
 function fieldsFromForm(formData: FormData) {
@@ -38,7 +39,7 @@ export async function updateBookAction(_state: FormState, formData: FormData): P
   const id = String(formData.get('id') ?? '');
   try {
     const updated = await books.updateBook(id, fieldsFromForm(formData));
-    if (!updated) return { error: 'Book not found.' };
+    if (!updated) return { error: copy.errors.bookNotFound };
   } catch (err) {
     return { error: message(err) };
   }
@@ -49,7 +50,7 @@ export async function updateBookAction(_state: FormState, formData: FormData): P
 export async function setStatusAction(id: string, status: string): Promise<FormState> {
   try {
     const book = await books.setStatus(id, status);
-    if (!book) return { error: 'Book not found.' };
+    if (!book) return { error: copy.errors.bookNotFound };
   } catch (err) {
     return { error: message(err) };
   }
@@ -58,12 +59,11 @@ export async function setStatusAction(id: string, status: string): Promise<FormS
 }
 
 export async function deleteBookAction(id: string): Promise<FormState> {
-  if (!(await books.deleteBook(id))) return { error: 'Book not found.' };
+  if (!(await books.deleteBook(id))) return { error: copy.errors.bookNotFound };
   refreshBooks();
   redirect('/');
 }
 
-/** Used by the scanner: turns a scanned barcode into a book id, or null. */
 export async function findByCodeAction(code: string): Promise<{ id: string } | null> {
   const book = await books.getBookByCode(code);
   return book ? { id: book.id } : null;

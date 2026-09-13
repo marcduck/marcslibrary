@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { STATUSES } from '@/lib/statuses';
 import { setStatusAction, deleteBookAction } from '@/app/actions';
 import { Button, Card, Field, SegmentGroup } from '@/components/ui';
+import { copy } from '@/lib/copy';
 import type { Book } from '@/lib/books';
 
 export function StatusControls({ book }: { book: Book }) {
@@ -24,7 +25,7 @@ export function StatusControls({ book }: { book: Book }) {
   return (
     <Card.Root variant="outline">
       <Card.Body gap="2">
-        <Card.Title mb="1">Change status</Card.Title>
+        <Card.Title mb="1">{copy.statusActions.changeStatus}</Card.Title>
         <SegmentGroup.Root
           value={book.status}
           onValueChange={(details) => details.value && apply(details.value)}
@@ -48,11 +49,11 @@ export function DeleteBookButton({ id, title }: { id: string; title: string }) {
       variant="outline"
       disabled={pending}
       onClick={() => {
-        if (!confirm(`Remove "${title}" from the library?`)) return;
+        if (!confirm(copy.statusActions.confirmRemove(title))) return;
         startTransition(() => { void deleteBookAction(id); });
       }}
     >
-      {pending ? 'Removing…' : 'Remove book'}
+      {pending ? copy.statusActions.removing : copy.statusActions.removeBook}
     </Button>
   );
 }

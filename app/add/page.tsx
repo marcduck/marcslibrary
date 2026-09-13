@@ -1,6 +1,7 @@
 import TopBar from '@/components/TopBar';
 import BookForm from '@/components/BookForm';
 import { nextCode } from '@/lib/books';
+import { copy } from '@/lib/copy';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ export default async function AddPage({ searchParams }: { searchParams: Promise<
 
   return (
     <>
-      <TopBar title="Add a book" back="/" />
+      <TopBar title={copy.titles.addBook} back="/" />
       <main className="view">
         <BookForm nextCode={suggestedCode} scannedCode={code} />
       </main>

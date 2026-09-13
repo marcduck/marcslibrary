@@ -20,8 +20,6 @@ body {
   flex-direction: column;
 }
 
-/* ------------------------------------------------------------- app chrome */
-
 .topbar {
   position: sticky;
   top: 0;
@@ -103,8 +101,6 @@ body {
 }
 .theme-switch > * { pointer-events: auto; }
 
-/* ------------------------------------------------------------------ text */
-
 .empty {
   color: var(--colors-fg-muted);
   text-align: center;
@@ -121,8 +117,6 @@ body {
   margin: 8px 0 0;
 }
 .hint.error { color: var(--colors-red-11); font-weight: 500; }
-
-/* ------------------------------------------------------------ book list */
 
 .search-row { margin-bottom: 12px; }
 
@@ -169,8 +163,6 @@ body {
 .book-meta, .book-code { color: var(--colors-fg-muted); font-size: 0.82rem; }
 .book-code { font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
 
-/* ------------------------------------------------------------ book detail */
-
 .author { margin: 0; color: var(--colors-fg-muted); }
 .status-line { margin: 0; }
 .facts, .code-line {
@@ -196,8 +188,6 @@ body {
 .history li:last-child { border-bottom: none; }
 .history time { color: var(--colors-fg-muted); white-space: nowrap; }
 
-/* ------------------------------------------------------------------ forms */
-
 .form, .inline-form {
   display: flex;
   flex-direction: column;
@@ -209,8 +199,6 @@ body {
   flex-wrap: wrap;
   gap: 8px;
 }
-
-/* ---------------------------------------------------------------- scanner */
 
 .scanner {
   position: relative;
@@ -231,4 +219,14 @@ body {
   border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 6px;
   box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.28);
+  transition: border-color 0.15s ease;
+}
+.scan-frame.detected {
+  border-color: var(--colors-green-9);
+  animation: scan-detected 0.5s ease-out;
+}
+@keyframes scan-detected {
+  0% { background: rgba(34, 197, 94, 0.5); transform: scale(1); }
+  60% { background: rgba(34, 197, 94, 0.15); transform: scale(1.04); }
+  100% { background: transparent; transform: scale(1); }
 }

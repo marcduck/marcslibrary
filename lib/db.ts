@@ -1,30 +1,21 @@
-// Database connection, through @libsql/client.
-//
-// Locally, with no env vars set, this opens a plain SQLite file — same as
-// before, no setup needed. On Vercel, set TURSO_DATABASE_URL and
-// TURSO_AUTH_TOKEN (from a free https://turso.tech database) and the same
-// code talks to that instead, over HTTP. Vercel's filesystem does not keep
-// files between requests, so a real database is required in production.
-//
-// Next reloads modules on every edit in development, so the client is
-// cached on globalThis to avoid opening the file over and over.
-
 import { createClient, type Client } from '@libsql/client';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { copy } from './copy.ts';
 
 const DB_FILE = process.env.DB_FILE || join(process.cwd(), 'data', 'library.db');
 const TURSO_URL = process.env.TURSO_DATABASE_URL;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __libraryDb: Client | undefined;
-  // eslint-disable-next-line no-var
   var __libraryDbReady: Promise<void> | undefined;
 }
 
 function connect(): Client {
   if (TURSO_URL) {
+    if (!process.env.TURSO_AUTH_TOKEN) {
+      throw new Error(copy.errors.tursoConfig);
+    }
     return createClient({ url: TURSO_URL, authToken: process.env.TURSO_AUTH_TOKEN });
   }
   mkdirSync(dirname(DB_FILE), { recursive: true });
@@ -64,7 +55,6 @@ export function db(): Client {
   return globalThis.__libraryDb;
 }
 
-// Every call site must wait for the schema to exist before it runs a query.
 export function ready(): Promise<void> {
   db();
   return globalThis.__libraryDbReady!;
@@ -75,5 +65,3 @@ export function closeDb(): void {
   globalThis.__libraryDb = undefined;
   globalThis.__libraryDbReady = undefined;
 }
-
-export const dbFile = DB_FILE;

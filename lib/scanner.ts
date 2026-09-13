@@ -1,8 +1,5 @@
-// Camera barcode scanning. Uses the built-in BarcodeDetector where available
-// (Chrome on Android), and falls back to ZXing from a CDN everywhere else.
+import { copy } from './copy.ts';
 
-// Vendored so scanning works offline and without a CDN; the CDN is only a backup
-// for the case where the local copy is missing from a deployment.
 const ZXING_LOCAL = '/vendor/zxing-browser.min.js';
 const ZXING_CDN = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js';
 
@@ -12,18 +9,30 @@ type BarcodeDetectorCtor = {
 };
 
 type ZXingBrowser = {
-  BrowserMultiFormatReader: new () => {
-    decodeFromVideoDevice(
-      deviceId: string | undefined,
+  BrowserMultiFormatReader: new (hints?: Map<number, unknown>, timeBetweenScansMillis?: number) => {
+    decodeFromConstraints(
+      constraints: MediaStreamConstraints,
       video: HTMLVideoElement,
       callback: (result: { getText(): string } | undefined) => void,
     ): Promise<{ stop: () => void }>;
   };
+  DecodeHintType: { TRY_HARDER: number; POSSIBLE_FORMATS: number };
+  BarcodeFormat: Record<string, number>;
 };
 
 type Win = Window & { BarcodeDetector?: BarcodeDetectorCtor; ZXingBrowser?: ZXingBrowser };
 
 const FORMATS = ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'itf', 'codabar'];
+
+type FocusableConstraintSet = MediaTrackConstraintSet & { focusMode?: 'continuous' | 'single-shot' | 'manual' };
+const FOCUS_CONSTRAINT: FocusableConstraintSet = { focusMode: 'continuous' };
+
+const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
+  facingMode: 'environment',
+  width: { ideal: 1920 },
+  height: { ideal: 1080 },
+  advanced: [FOCUS_CONSTRAINT],
+};
 
 type OnResult = (code: string) => void;
 type OnError = (err: Error) => void;
@@ -58,10 +67,7 @@ export class Scanner {
 
   private async startNative(formats: string[], onResult: OnResult) {
     const detector = new (window as Win).BarcodeDetector!({ formats });
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' },
-      audio: false,
-    });
+    this.stream = await navigator.mediaDevices.getUserMedia({ video: VIDEO_CONSTRAINTS, audio: false });
     this.video.srcObject = this.stream;
     await this.video.play();
 
@@ -74,7 +80,6 @@ export class Scanner {
           return;
         }
       } catch {
-        // A single failed frame is not fatal; keep looking.
       }
       requestAnimationFrame(tick);
     };
@@ -84,20 +89,29 @@ export class Scanner {
   private async startZXing(onResult: OnResult) {
     try {
       await loadScript(ZXING_LOCAL);
-    } catch (err) {
+    } catch {
       await loadScript(ZXING_CDN);
     }
-    const { BrowserMultiFormatReader } = (window as Win).ZXingBrowser!;
-    const reader = new BrowserMultiFormatReader();
-    this.controls = await reader.decodeFromVideoDevice(undefined, this.video, (result: { getText(): string } | undefined) => {
-      if (result && !this.stopped) onResult(result.getText());
-    });
+    const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } = (window as Win).ZXingBrowser!;
+
+    const hints = new Map<number, unknown>();
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, FORMATS.map((f) => BarcodeFormat[f.toUpperCase()]));
+
+    const reader = new BrowserMultiFormatReader(hints, 100);
+    this.controls = await reader.decodeFromConstraints(
+      { video: VIDEO_CONSTRAINTS, audio: false },
+      this.video,
+      (result: { getText(): string } | undefined) => {
+        if (result && !this.stopped) onResult(result.getText());
+      },
+    );
   }
 
   stop() {
     this.stopped = true;
     if (this.controls) {
-      try { this.controls.stop(); } catch { /* already stopped */ }
+      try { this.controls.stop(); } catch {}
       this.controls = null;
     }
     if (this.stream) {
@@ -114,7 +128,7 @@ function loadScript(src: string): Promise<void> {
     const el = document.createElement('script');
     el.src = src;
     el.onload = () => resolve();
-    el.onerror = () => reject(new Error('Could not load the barcode scanning library. Check your connection.'));
+    el.onerror = () => reject(new Error(copy.scan.loadFailed));
     document.head.appendChild(el);
   });
 }
@@ -123,7 +137,6 @@ export function cameraSupported() {
   return Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
 
-// getUserMedia needs a secure context: https, or localhost during development.
 export function secureContextOK() {
   return window.isSecureContext || location.hostname === 'localhost' || location.protocol === 'file:';
 }

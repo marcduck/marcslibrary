@@ -6,11 +6,12 @@ import { usePathname } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { SegmentGroup } from '@/components/ui';
+import { copy } from '@/lib/copy';
 
 const TABS = [
-  { href: '/', label: 'Library' },
-  { href: '/scan', label: 'Scan' },
-  { href: '/add', label: 'Add' },
+  { href: '/', label: copy.nav.library },
+  { href: '/scan', label: copy.nav.scan },
+  { href: '/add', label: copy.nav.add },
 ];
 
 export function TabBar() {
@@ -51,7 +52,7 @@ export function ThemeSwitch() {
         size="xs"
         value={mounted ? theme : null}
         onValueChange={(details) => setTheme(details.value ?? 'system')}
-        aria-label="Theme"
+        aria-label={copy.theme}
       >
         <SegmentGroup.Indicator />
         <SegmentGroup.Items items={THEME_OPTIONS} />

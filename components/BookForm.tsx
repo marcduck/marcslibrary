@@ -5,10 +5,9 @@ import { createListCollection } from '@ark-ui/react/collection';
 import { createBookAction, updateBookAction, type FormState } from '@/app/actions';
 import { STATUSES } from '@/lib/statuses';
 import { Button, Card, Field, Input, Select } from '@/components/ui';
+import { copy } from '@/lib/copy';
 import type { Book } from '@/lib/books';
 
-// Editing an existing book passes `book`; adding a new one passes `nextCode`
-// (and, when arriving from a scan of an unknown barcode, `scannedCode`).
 type Props = { book?: Book; nextCode?: string; scannedCode?: string };
 
 const statusCollection = createListCollection({
@@ -17,8 +16,6 @@ const statusCollection = createListCollection({
   itemToString: (item) => item.label,
 });
 
-// Pads whatever digits have been typed so far to 7 characters, so the
-// leading zeros appear as you type rather than only once you submit.
 function padCode(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(-7);
   return digits ? digits.padStart(7, '0') : '';
@@ -29,7 +26,7 @@ export default function BookForm({ book, nextCode = '', scannedCode = '' }: Prop
     book ? updateBookAction : createBookAction,
     {},
   );
-  const [code, setCode] = useState(scannedCode || nextCode);
+  const [code, setCode] = useState(padCode(scannedCode) || nextCode);
 
   return (
     <Card.Root variant="outline">
@@ -38,17 +35,17 @@ export default function BookForm({ book, nextCode = '', scannedCode = '' }: Prop
           {book && <input type="hidden" name="id" value={book.id} />}
 
           <Field.Root required>
-            <Field.Label>Title</Field.Label>
+            <Field.Label>{copy.form.title}</Field.Label>
             <Input name="title" defaultValue={book?.title} required />
           </Field.Root>
 
           <Field.Root>
-            <Field.Label>Author</Field.Label>
+            <Field.Label>{copy.form.author}</Field.Label>
             <Input name="author" defaultValue={book?.author} />
           </Field.Root>
 
           <Field.Root required>
-            <Field.Label>Barcode</Field.Label>
+            <Field.Label>{copy.form.barcode}</Field.Label>
             {book ? (
               <Input name="code" defaultValue={book.code} required />
             ) : (
@@ -63,13 +60,13 @@ export default function BookForm({ book, nextCode = '', scannedCode = '' }: Prop
           </Field.Root>
 
           <Field.Root>
-            <Field.Label>ISBN</Field.Label>
+            <Field.Label>{copy.form.isbn}</Field.Label>
             <Input name="isbn" defaultValue={book?.isbn} />
           </Field.Root>
 
           {!book && (
             <Select.Root collection={statusCollection} defaultValue={['available']} name="status">
-              <Select.Label>Status</Select.Label>
+              <Select.Label>{copy.form.status}</Select.Label>
               <Select.Control>
                 <Select.Trigger>
                   <Select.ValueText />
@@ -95,7 +92,7 @@ export default function BookForm({ book, nextCode = '', scannedCode = '' }: Prop
           {state.error && <Field.Root invalid><Field.ErrorText>{state.error}</Field.ErrorText></Field.Root>}
 
           <Button type="submit" colorPalette="blue" disabled={pending}>
-            {book ? (pending ? 'Saving…' : 'Save changes') : (pending ? 'Adding…' : 'Add to library')}
+            {book ? (pending ? copy.form.saving : copy.form.saveChanges) : (pending ? copy.form.adding : copy.form.addToLibrary)}
           </Button>
         </form>
       </Card.Body>

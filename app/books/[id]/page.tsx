@@ -5,6 +5,7 @@ import { StatusControls, DeleteBookButton } from '@/components/BookActions';
 import { getBook } from '@/lib/books';
 import { statusLabel, statusColor } from '@/lib/statuses';
 import { Badge, Button, Card } from '@/components/ui';
+import { copy } from '@/lib/copy';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
 
   return (
     <>
-      <TopBar title="Book" back="/" />
+      <TopBar title={copy.titles.book} back="/" />
       <main className="view">
         <Card.Root variant="outline">
           <Card.Body gap="2">
@@ -27,8 +28,8 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
             <div className="status-line">
               <Badge colorPalette={statusColor(book.status)}>{statusLabel(book.status)}</Badge>
             </div>
-            {book.isbn && <p className="facts">ISBN {book.isbn}</p>}
-            <p className="code-line">Barcode {book.code}</p>
+            {book.isbn && <p className="facts">{copy.form.isbn} {book.isbn}</p>}
+            <p className="code-line">{copy.form.barcode} {book.code}</p>
           </Card.Body>
         </Card.Root>
 
@@ -38,10 +39,10 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
           <Card.Body>
             <div className="actions-row">
               <Button asChild variant="outline">
-                <a href={searchHref} target="_blank" rel="noopener noreferrer">Web Search</a>
+                <a href={searchHref} target="_blank" rel="noopener noreferrer">{copy.book.webSearch}</a>
               </Button>
               <Button asChild variant="outline">
-                <Link href={`/books/${book.id}/edit`}>Edit details</Link>
+                <Link href={`/books/${book.id}/edit`}>{copy.book.editDetails}</Link>
               </Button>
               <DeleteBookButton id={book.id} title={book.title} />
             </div>
@@ -51,7 +52,7 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
         {book.history.length > 0 && (
           <Card.Root variant="outline">
             <Card.Body>
-              <Card.Title mb="2">History</Card.Title>
+              <Card.Title mb="2">{copy.book.history}</Card.Title>
               <ul className="history">
                 {book.history.slice(0, 8).map((entry, i) => (
                   <li key={i}>

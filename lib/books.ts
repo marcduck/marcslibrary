@@ -1,9 +1,8 @@
-// Every read and write of the library. Server actions and the REST API are both
-// thin layers over these functions.
-
 import 'server-only';
+import { LibsqlError } from '@libsql/client';
 import { db, ready } from './db.ts';
 import { isStatus, normaliseCode, formatCode, type Status } from './statuses.ts';
+import { copy } from './copy.ts';
 
 export type HistoryEntry = {
   status: string;
@@ -26,8 +25,6 @@ export type BookInput = Partial<Omit<Book, 'id' | 'history'>> & { code?: string 
 
 export type Counts = Record<string, number> & { all: number };
 
-// Shelf barcodes are printed in sequence; this library's first batch of labels
-// started at 0000167, so new suggestions carry on from there.
 const START_CODE = 167;
 
 const now = () => new Date().toISOString();
@@ -57,9 +54,6 @@ async function historyFor(bookId: string, limit = 20): Promise<HistoryEntry[]> {
     sql: 'SELECT status, at FROM history WHERE book_id = ? ORDER BY id DESC LIMIT ?',
     args: [bookId, limit],
   });
-  // Rows from @libsql/client are array-like, not plain objects, and React
-  // refuses to pass those from a server component to a client one. Copy them
-  // into plain objects.
   return result.rows.map((row) => ({ status: String(row.status), at: String(row.at) }));
 }
 
@@ -85,8 +79,6 @@ export async function listBooks({ q = '', status = 'all' }: { q?: string; status
     const like = `%${q.toLowerCase()}%`;
     const clauses = ['LOWER(title) LIKE ?', 'LOWER(author) LIKE ?', 'code_key LIKE ?'];
     params.push(like, like, `%${normaliseCode(q)}%`);
-    // Only match ISBNs when the query has digits to match: an empty digit
-    // string would turn into LIKE '%%' and quietly match every book.
     const digits = q.replace(/[^0-9Xx]/g, '');
     if (digits) {
       clauses.push('isbn LIKE ?');
@@ -141,34 +133,42 @@ export async function createBook(input: BookInput): Promise<Book> {
   await ready();
   const code = formatCode(input.code);
   const codeKey = normaliseCode(code);
-  if (!codeKey) throw new Error('A barcode is required.');
+  if (!codeKey) throw new Error(copy.errors.barcodeRequired);
 
   const clash = await getBookByCode(codeKey);
-  if (clash) throw new ConflictError(`Barcode ${clash.code} is already "${clash.title}".`, clash);
+  if (clash) throw new ConflictError(copy.errors.barcodeTaken(clash.code, clash.title), clash);
 
   const status: Status = isStatus(input.status) ? input.status : 'available';
   const id = newId();
   const at = now();
 
-  await db().batch(
-    [
-      {
-        sql: `INSERT INTO books
-          (id, code, code_key, title, author, isbn, status, added_at, updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?)`,
-        args: [
-          id, code, codeKey,
-          String(input.title ?? '').trim() || 'Untitled',
-          String(input.author ?? '').trim(),
-          String(input.isbn ?? '').trim(),
-          status,
-          at, at,
-        ],
-      },
-      { sql: 'INSERT INTO history (book_id, status, at) VALUES (?,?,?)', args: [id, status, at] },
-    ],
-    'write',
-  );
+  try {
+    await db().batch(
+      [
+        {
+          sql: `INSERT INTO books
+            (id, code, code_key, title, author, isbn, status, added_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?)`,
+          args: [
+            id, code, codeKey,
+            String(input.title ?? '').trim() || copy.defaults.untitled,
+            String(input.author ?? '').trim(),
+            String(input.isbn ?? '').trim(),
+            status,
+            at, at,
+          ],
+        },
+        { sql: 'INSERT INTO history (book_id, status, at) VALUES (?,?,?)', args: [id, status, at] },
+      ],
+      'write',
+    );
+  } catch (err) {
+    if (err instanceof LibsqlError && err.code === 'SQLITE_CONSTRAINT') {
+      const raceClash = await getBookByCode(codeKey);
+      if (raceClash) throw new ConflictError(copy.errors.barcodeTaken(raceClash.code, raceClash.title), raceClash);
+    }
+    throw err;
+  }
 
   return (await getBook(id))!;
 }
@@ -193,9 +193,9 @@ export async function updateBook(id: string, changes: BookInput): Promise<Book |
   if (changes.code !== undefined) {
     const code = formatCode(changes.code);
     const codeKey = normaliseCode(code);
-    if (!codeKey) throw new Error('A barcode is required.');
+    if (!codeKey) throw new Error(copy.errors.barcodeRequired);
     const clash = await getBookByCode(codeKey);
-    if (clash && clash.id !== id) throw new ConflictError(`Barcode ${clash.code} is already "${clash.title}".`, clash);
+    if (clash && clash.id !== id) throw new ConflictError(copy.errors.barcodeTaken(clash.code, clash.title), clash);
     sets.push('code = ?', 'code_key = ?');
     params.push(code, codeKey);
   }
@@ -210,7 +210,7 @@ export async function updateBook(id: string, changes: BookInput): Promise<Book |
 
 export async function setStatus(id: string, status: string): Promise<Book | null> {
   await ready();
-  if (!isStatus(status)) throw new Error(`Unknown status "${status}".`);
+  if (!isStatus(status)) throw new Error(copy.errors.unknownStatus(status));
   if (!(await getBook(id))) return null;
 
   const at = now();

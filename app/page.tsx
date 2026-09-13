@@ -5,6 +5,7 @@ import LibrarySearch from '@/components/LibrarySearch';
 import { listBooks, counts } from '@/lib/books';
 import { statusLabel, statusColor } from '@/lib/statuses';
 import { Badge } from '@/components/ui';
+import { copy } from '@/lib/copy';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export default async function LibraryPage({ searchParams }: Props) {
 
   return (
     <>
-      <TopBar title="Marc's Library" />
+      <TopBar title={copy.app.name} />
       <main className="view">
         <Suspense fallback={<div className="search-row" />}>
           <LibrarySearch counts={totals} />
@@ -40,8 +41,8 @@ export default async function LibraryPage({ searchParams }: Props) {
         ) : (
           <p className="empty">
             {totals.all === 0
-              ? <>No books yet. Tap <strong>Add</strong> to enter your first one, or <strong>Scan</strong> a label.</>
-              : 'No books match that search.'}
+              ? <>{copy.library.emptyLead} <strong>{copy.nav.add}</strong> {copy.library.emptyMid} <strong>{copy.nav.scan}</strong> {copy.library.emptyEnd}</>
+              : copy.library.emptyNoMatch}
           </p>
         )}
       </main>

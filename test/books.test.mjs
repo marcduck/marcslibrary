@@ -1,4 +1,3 @@
-// The data layer, against a throwaway database.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -17,8 +16,6 @@ before(async () => {
 after(async () => {
   const { closeDb } = await import('../lib/db.ts');
   closeDb();
-  // The native libsql binding can hold the file open for a moment after
-  // close() returns, so deleting it right away is flaky on Windows.
   if (tmp) await rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
@@ -87,9 +84,6 @@ test('deletes a book and its history', async () => {
 });
 
 test('returns plain objects, which React can pass to client components', async () => {
-  // Rows from the database driver are not plain objects; React rejects those
-  // across the server/client boundary, so everything leaving this module is
-  // copied.
   const book = await books.createBook({ title: 'Serialisable', code: '0001000' });
   await books.setStatus(book.id, 'reading');
   const fetched = await books.getBook(book.id);
