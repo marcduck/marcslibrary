@@ -8,8 +8,8 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "panda codegen && next dev",
+    "build": "panda codegen && next build",
     "start": "next start",
     "test": "node --conditions=react-server --test"
   },
