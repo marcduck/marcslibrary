@@ -57,7 +57,7 @@ export default function ScanClient() {
     <>
       {cameraReady && !cameraFailed && (
         <div className="scanner">
-          <video ref={videoRef} playsInline muted />
+          <video ref={videoRef} autoPlay playsInline muted />
           <div className={`scan-frame ${detected ? 'detected' : ''}`} />
         </div>
       )}
